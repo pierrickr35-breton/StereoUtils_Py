@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+.DS_Store
+build/
+dist/
+*.app/
+reference/
+
+# Sample/test data files - not part of the source port
+Exemple_Stereo_dataFile.txt
+project_stereo.txt
+test_DI.txt
+test_DI_strdip.txt
