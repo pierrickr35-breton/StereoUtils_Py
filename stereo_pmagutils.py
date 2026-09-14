@@ -677,6 +677,90 @@ def relocate(vdm_1e22: float, site_lat: float, inc: float) -> Tuple[float, float
     return fvdm * 1.0e06, fvadm * 1.0e06
 
 
+# Colonnes .pmagint (STARpaleomag_Py/AMS_Py, meme fichier partage - voir
+# STARpaleomag_Py/paleointensity._PMAGINT_HEADER) - reproduites ICI en dur
+# (pas d'import inter-projet, meme discipline que site_map.py pour .prmag :
+# chaque appli garde son propre lecteur minimal autonome). Seules les
+# colonnes reellement utilisees par read_meanpal_file_triples sont
+# nommees ; les autres n'ont pas besoin d'etre listees, l'index est
+# retrouve dynamiquement depuis la ligne d'entete du fichier.
+_PMAGINT_MARKER_COL = "specimen"
+
+
+def read_meanpal_file_triples(path: str) -> List[Tuple[float, float, float]]:
+    """Lit le fichier choisi pour MEANPAL mode "DONNES DANS UN FICHIER (1)" -
+    demande explicite utilisateur ("dans le pmagint, peut on inserer des
+    lignes de commentaires manuellement... ce fichier devra aussi etre lu
+    dans Stereo_utils... est-ce possible de verifier la compatibilite ?").
+    Verification faite : PAS compatible tel quel avec l'ancien format -
+    l'ancien lecteur (3 premieres colonnes = F Q N, aucun en-tete attendu)
+    prenait les colonnes 0/1/2 sans condition ; sur un vrai .pmagint la
+    colonne 0 est l'id specimen (texte) et F/Q/N sont ailleurs (H/Hcorani/
+    HcorCool en position 17/19/21, q en 8, N en 5) - chaque ligne aurait
+    silencieusement echoue au float() et ete ignoree.
+
+    Detecte maintenant les DEUX formats :
+    - .pmagint natif (tabule, ligne d'entete commencant par "specimen") :
+      une ligne = une interpretation/specimen = une "experience" au sens
+      de meanpal_weighted ; F = le paleointensite le PLUS corrige
+      disponible (HcorCool > Hcorani > H - MEME ordre de precedence que
+      STARpaleomag_Py/magic_export.paleointensity_magic_fields/h_final,
+      pour rester coherent avec ce qui serait exporte vers MagIC), Q = q,
+      N = N (nombre de points Arai utilises dans l'interpretation).
+    - ancien format simple (3 colonnes F Q N par ligne, sans en-tete).
+
+    Dans les DEUX cas, les lignes vides et les lignes de commentaire
+    ("#...", y compris ajoutees manuellement a la main dans le fichier)
+    sont ignorees - .pmagint accepte deja cette convention cote
+    STARpaleomag_Py/AMS_Py (paleointensity.read_pmagint)."""
+    with open(path, "r", encoding="iso-8859-1", errors="replace") as f:
+        raw_lines = f.read().splitlines()
+    lines = [ln for ln in raw_lines if ln.strip() and not ln.strip().startswith("#")]
+    if not lines:
+        return []
+
+    header = lines[0].split("\t")
+    if header[0].strip() == _PMAGINT_MARKER_COL:
+        idx = {name.strip(): i for i, name in enumerate(header)}
+
+        def col(parts: List[str], name: str) -> Optional[float]:
+            i = idx.get(name)
+            if i is None or i >= len(parts):
+                return None
+            v = parts[i].strip()
+            if v in ("", "n.d"):
+                return None
+            try:
+                return float(v)
+            except ValueError:
+                return None
+
+        triples = []
+        for ln in lines[1:]:
+            parts = ln.split("\t")
+            h = col(parts, "HcorCool")
+            if h is None:
+                h = col(parts, "Hcorani")
+            if h is None:
+                h = col(parts, "H")
+            q, n = col(parts, "q"), col(parts, "N")
+            if h is None or q is None or n is None:
+                continue
+            triples.append((h, q, n))
+        return triples
+
+    triples = []
+    for ln in lines:
+        parts = ln.split()
+        if len(parts) < 3:
+            continue
+        try:
+            triples.append((float(parts[0]), float(parts[1]), float(parts[2])))
+        except ValueError:
+            continue
+    return triples
+
+
 def meanpal_weighted(triples: Sequence[Tuple[float, float, float]]) -> Optional[dict]:
     """Port du coeur de `MEANPAL` modes fichier-simple (1) et clavier (3) :
     `triples` = (F,Q,N) par experience, poids `Q/sqrt(N-2)` (Prevot et

@@ -669,7 +669,7 @@ class StereoUtilsApp:
         if path_s is None:
             return None
         self.path_between_points = path_s.strip().lower().startswith("y")
-        sym_s = self._console_input("symbole c, t, l, e, s pour square : ", "c")
+        sym_s = self._console_input("symbol c, t, l, e, s for square : ", "c")
         if sym_s is None:
             return None
         sym = sym_s.strip().lower()
@@ -679,7 +679,7 @@ class StereoUtilsApp:
 
     def _prompt_symbol_only(self):
         """Le prompt symbole seul (mean/opfil2 - pas de prompt "path")."""
-        sym_s = self._console_input("symbole c, t, l, e, s pour square : ", "c")
+        sym_s = self._console_input("symbol c, t, l, e, s for square : ", "c")
         if sym_s is None:
             return None
         sym = sym_s.strip().lower()
@@ -871,12 +871,12 @@ class StereoUtilsApp:
         reconnue pour chaque type de fichier du menu Data, et les noms de
         colonnes acceptes (voir `stereo_selection.FIELD_ALIASES`)."""
         text = (
-            "Data > Load from file : ligne d'en-tete optionnelle\n"
+            "Data > Load from file : optional header line\n"
             "\n"
-            "Chaque fichier peut commencer par une ligne d'en-tete (\"#\" en tete,\n"
-            "ou simplement les noms de colonnes) donnant l'ordre des colonnes -\n"
-            "sinon repli sur l'ordre positionnel classique (dec, inc, ... a\n"
-            "partir de la 1ere colonne, sans colonne site/id en tete).\n"
+            "Each file can start with a header line (leading \"#\", or simply\n"
+            "the column names) giving the column order - otherwise it falls\n"
+            "back to the classic positional order (dec, inc, ... starting\n"
+            "from the 1st column, with no site/id column up front).\n"
             "\n"
             "  File [D-I]            : #dec inc\n"
             "  File [D-I_TC]         : #dec inc strike dip\n"
@@ -884,12 +884,12 @@ class StereoUtilsApp:
             "  File [D-I-a95_TC]     : #dec inc a95 strike dip\n"
             "  File [great circle]   : #glon glat [ad1 ai1 ad2 ai2]\n"
             "\n"
-            "Une colonne \"site\"/\"id\"/\"name\" en tete de ligne est repérée et\n"
-            "ignorée automatiquement SI un en-tete est present (sinon, ajoutez\n"
-            "un en-tete a votre fichier plutot que de compter sur un decalage\n"
-            "de colonnes fixe).\n"
+            "A \"site\"/\"id\"/\"name\" column at the start of the line is detected\n"
+            "and skipped automatically IF a header is present (otherwise, add\n"
+            "a header to your file rather than relying on a fixed column\n"
+            "offset).\n"
             "\n"
-            "Noms de colonnes reconnus (insensible a la casse) :\n"
+            "Recognized column names (case-insensitive):\n"
             "  dec      : dec, declination, d\n"
             "  inc      : inc, inclination, i\n"
             "  a95      : a95, alpha95, alph\n"
@@ -898,7 +898,7 @@ class StereoUtilsApp:
             "  dip      : dip\n"
             "  glon     : glon, lon, long, longitude\n"
             "  glat     : glat, lat, latitude\n"
-            "  ad1/ai1/ad2/ai2 : ad1, ai1, ad2, ai2 (secteur de grand cercle)\n"
+            "  ad1/ai1/ad2/ai2 : ad1, ai1, ad2, ai2 (great circle sector)\n"
             "  site     : site, id, name, sample, specimen\n"
         )
         self._afficher(text)
@@ -1042,7 +1042,7 @@ class StereoUtilsApp:
             messagebox.showwarning(
                 "Not enough data", "Need directions + great circles >= 3 total.")
             return
-        sect_s = self._console_input("VOULEZ VOUS PRENDRE EN COMPTE DES SECTEURS? Y/N : ", "n")
+        sect_s = self._console_input("DO YOU WANT TO TAKE SECTORS INTO ACCOUNT? Y/N : ", "n")
         if sect_s is None:
             return
         use_sectors = sect_s.strip().lower().startswith("y")
@@ -1468,7 +1468,7 @@ class StereoUtilsApp:
             if "a95" in idx:
                 col_order.append(idx["a95"])
         else:
-            order_s = self._console_input("VGP en (lat,lon) (1) ou (lon,lat) (2) dans le fichier : ", "1")
+            order_s = self._console_input("VGP as (lat,lon) (1) or (lon,lat) (2) in the file : ", "1")
             if order_s is None:
                 return
             lat_first = order_s.strip() != "2"
@@ -1984,23 +1984,16 @@ class StereoUtilsApp:
     # -- Paleointensity --------------------------------------------------------
 
     def pu_meanpal(self):
-        mode = self._console_input("DONNES DANS UN FICHIER (1), CLAVIER (3) : ", "3")
+        mode = self._console_input("DATA FROM A FILE (1), KEYBOARD (3) : ", "3")
         if mode is None:
             return
         triples = []
         if mode.strip() == "1":
-            path = filedialog.askopenfilename(title="mean paleointensity - file (F Q N)")
+            path = filedialog.askopenfilename(
+                title="mean paleointensity - file (F Q N, or a .pmagint)")
             if not path:
                 return
-            with open(path, "r", encoding="iso-8859-1", errors="replace") as f:
-                for line in f:
-                    parts = line.split()
-                    if len(parts) < 3:
-                        continue
-                    try:
-                        triples.append((float(parts[0]), float(parts[1]), float(parts[2])))
-                    except ValueError:
-                        continue
+            triples = pu.read_meanpal_file_triples(path)
         else:
             self._afficher("ENTER FIELD VALUE, Q, AND THE NUMBER OF STEPS\n(blank to stop, paste multiple lines OK)\n")
             while True:
