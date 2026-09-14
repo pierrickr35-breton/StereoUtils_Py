@@ -5,19 +5,32 @@ statistiques directionnelles, corrections structurales, connecteur
 PmagPy), meme heritage/architecture que Starmac_Py/AMS_Py (console texte +
 panneau graphique).
 
-ETAT : menus "Pmag_Python" (stereo_pmagpy.py), "Command", "Projection",
-"Data input" (reseau stereographique/equiaire natif + chargement/saisie/
-liste/suppression D-I, D-I-a95 ("means"), grands cercles - stereo_net.py/
+ETAT : tous les menus sont portes - "PmagPy-tools" (stereo_pmagpy.py, ne
+reimplemente rien, appelle directement le paquet pmagpy installe plutot
+que shell-out vers un script PmagPy standalone comme le faisait le
+Fortran), "Graphics" (ex-"Projection", fusionne avec l'ancien menu
+"Command" - Plot stereo/Clear Screen/Graph title/Export SVG y vivent
+desormais aussi, ainsi que Plot stereo project/Plot VGPs on Map/Plot VGP
+Project - demande explicite utilisateur "change the menu projection by
+Graphics, add plot stereo in this menu, export svg" puis "move plot
+stereo project; VGP on map VGP project; within the graphic menu"), "Data"
+(reseau stereographique/equiaire natif + chargement/saisie/liste/
+suppression D-I, D-I-a95 ("means"), grands cercles - stereo_net.py/
 stereo_geometry.py/stereo_selection.py), "Statistics" (hors Bootstrap
-ellipse - stereo_stats.py) et "Project" (systeme de calques Illustrator
-multi-couches - stereo_project.py) sont portes. Pmag Utilities du Fortran
-d'origine (voir StereoOSX_x.f95) n'est PAS encore porte."""
+ellipse, portee sous PmagPy-tools - stereo_stats.py), "Project" (systeme
+de calques Illustrator multi-couches - stereo_project.py) et "Pmag
+Utilities" (pmagoutils.f - VGP/rotation/correction structurale/
+paleointensite/IGRF - stereo_pmagutils.py) - demande explicite
+utilisateur ("is it possible to write a guide for stereo") : voir
+help/StereoUtils_Py_Guide.html (menu Help) pour le detail complet."""
 
 import glob
 import os
 import subprocess
+import sys
 import tempfile
 import tkinter as tk
+import webbrowser
 from tkinter import ttk, filedialog, messagebox
 
 from matplotlib import image as mpimg
@@ -34,8 +47,46 @@ import stereo_pmagpy as sp
 import stereo_stats as ss
 import stereo_project as sproj
 import stereo_pmagutils as pu
+from curie_kt import (
+    read_cur_file, read_kt_sample_list, apply_furnace_correction,
+    apply_vessel_correction, normalize_by_mass, normalize_by_volume,
+    curie_point_second_derivative, build_kt_figure,
+)
+from curie_hyst import (
+    read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
+    vsm_paths_for, compute_hysteresis, format_hysteresis_result, build_hysteresis_figure,
+)
+from site_map import read_prmag_sites, write_kml, write_gmt_map_script, build_site_map_figure
 
 _SYMBOL_CHARS = {"c", "t", "e", "l", "s"}
+
+# Raccourcis clavier - premiere entree de ce type dans StereoUtils_Py,
+# meme convention que AMS_Py/STARpaleomag_Py app._SHORTCUTS_MAC/_WIN/
+# SHORTCUTS/_labeled/_setup_shortcuts (demande explicite utilisateur
+# "can you add a shortcut to the menu normalize") : PAS d'`accelerator=`
+# Tk (sur Aqua, `accelerator=` fait intercepter la combinaison par le
+# menu natif sans jamais invoquer la commande Tcl, court-circuitant
+# `bind_all` - bug reel deja rencontre et documente cote AMS_Py/
+# STARpaleomag_Py) - le raccourci est affiche dans le LIBELLE (_labeled)
+# et lie separement via `bind_all` (_setup_shortcuts).
+_SHORTCUTS_MAC = {
+    "hystnorm": ("Cmd+N", "<Command-n>"),
+}
+_SHORTCUTS_WIN = {
+    "hystnorm": ("Ctrl+Shift+N", "<Control-Shift-N>"),
+}
+SHORTCUTS = _SHORTCUTS_WIN if sys.platform.startswith("win") else _SHORTCUTS_MAC
+
+
+def _resource_path(*parts: str) -> str:
+    """Chemin absolu d'une ressource livree AVEC l'appli (le guide
+    utilisateur HTML, voir ouvrir_user_guide) - equivalent de
+    STARpaleomag_Py/AMS_Py app._resource_path : fonctionne aussi bien
+    lancee depuis les sources (repertoire de ce fichier) qu'empaquetee par
+    PyInstaller (sys._MEIPASS) - demande explicite utilisateur ("is it
+    possible to write a guide for stereo")."""
+    base = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base, *parts)
 
 
 class StereoUtilsApp:
@@ -61,7 +112,33 @@ class StereoUtilsApp:
         self.path_between_points = False
         self.graph_title = ""
 
+        # K-T (susceptibilite vs temperature, curie_kt.py) - demande
+        # explicite utilisateur ("integrer les deux fonctions principales
+        # de Curie_OSX ... ajouter un menu K-T").
+        self.kt_curve = None          # curie_kt.KTCurve courante
+        self.kt_sample_list = {}      # Dict[str, KTListEntry], voir read_kt_sample_list
+        self.kt_list_dir = None       # repertoire de la liste chargee (resout les noms de fichier)
+        self.kt_curie_heating = None
+        self.kt_curie_cooling = None
+
+        # Hysteresis (curie_hyst.py) - demande explicite utilisateur
+        # ("integrer les deux fonctions principales de Curie_OSX ... les
+        # donnees d'Hysteresis").
+        self.hyst_sample_list = {}    # Dict[str, AgmListEntry|VsmListEntry]
+        self.hyst_list_dir = None
+        self.hyst_format = None       # "AGM" ou "VSM"
+        self.hyst_result = None       # curie_hyst.HysteresisResult courant
+        self.hyst_valsat_frac = 0.7   # seuil haut-champ du fit paramagnetique (prefhyste/valsat)
+        self.hyst_normalize = tk.BooleanVar(value=False)  # demande explicite "normalize each plot"
+        self.hyst_max_field = None    # None = auto ; sinon borne X explicite (Tesla)
+
+        # Site Map (site_map.py) - demande explicite utilisateur ("is
+        # there a possibility to have a basic map too" dans la version
+        # matplotlib du menu Site Map).
+        self.sitemap_basemap = tk.BooleanVar(value=True)
+
         self._setup_menu()
+        self._setup_shortcuts()
 
         self.paned_window = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         self.paned_window.pack(fill=tk.BOTH, expand=True)
@@ -71,6 +148,11 @@ class StereoUtilsApp:
         self.canvas_fig = FigureCanvasTkAgg(self.fig, master=self.graph_frame)
         self.canvas_fig.get_tk_widget().pack(fill=tk.BOTH, expand=True)
         self.paned_window.add(self.graph_frame, weight=1)
+        # Clic-sur-axe-X pour changer l'echelle (champ max) du graphique
+        # Hysteresis - voir curie_hyst._register_xaxis_pick/_on_plot_pick
+        # - demande explicite utilisateur ("to click on the Xaxis to
+        # change the scale (Max field value)").
+        self.canvas_fig.mpl_connect("pick_event", self._on_plot_pick)
 
         self.text_frame = ttk.Frame(self.paned_window, width=550)
         self.text_area = tk.Text(
@@ -227,13 +309,16 @@ class StereoUtilsApp:
         self._redraw_canvas()
 
     # ------------------------------------------------------------------
-    # Command / Projection (reseau stereo natif - stereo_net.py)
+    # Graphics / Projection (reseau stereo natif - stereo_net.py)
     # ------------------------------------------------------------------
 
     def plot_screen(self):
-        """Equivalent de `plotdata` (menu Command > Plot-screen) : trace le
-        cadre du reseau + les directions chargees, dans le canvas integre
-        (pas de fichier image intermediaire, contrairement au Pmag_Python)."""
+        """Equivalent de `plotdata` (menu Graphics > Plot stereo, ex-menu
+        "Command", fusionne dans "Graphics" - demande explicite
+        utilisateur "change the menu projection by Graphics, add plot
+        stereo in this menu") : trace le cadre du reseau + les directions
+        chargees, dans le canvas integre (pas de fichier image
+        intermediaire, contrairement au Pmag_Python)."""
         self._last_image_files = []
         build_stereo_figure(
             self.directions, la=self.la, phi=self.phi, iproj=self.iproj,
@@ -246,13 +331,15 @@ class StereoUtilsApp:
         self._redraw_canvas()
 
     def clear_screen(self):
-        """Equivalent de `clrtty` (menu Command > Clear Screen)."""
+        """Equivalent de `clrtty` (menu Graphics > Clear Screen, ex-menu
+        "Command")."""
         self.fig.clear()
         self.fig.set_size_inches(5.5, 5.5, forward=True)
         self._redraw_canvas()
 
     def set_graph_title(self):
-        """Equivalent de `title` (menu Command > Graph title)."""
+        """Equivalent de `title` (menu Graphics > Graph title, ex-menu
+        "Command")."""
         title = self._console_input("graph title : ", self.graph_title)
         if title is None:
             return
@@ -302,7 +389,7 @@ class StereoUtilsApp:
         self._afficher(f"net diameter : {self.dim:.1f} cm\n")
 
     def set_symbol_size_color(self):
-        """Equivalent de `sizepoint` (menu Projection > Symbol size &
+        """Equivalent de `sizepoint` (menu Graphics > Symbol size &
         color) : taille (cm) - la couleur des symboles individuels suit le
         caractere saisi au chargement (`c`,`t`,`e`,`l`,`s`), pas un
         parametre global cote source."""
@@ -318,18 +405,65 @@ class StereoUtilsApp:
         self.point_size = size
         self._afficher(f"symbol size : {self.point_size:.2f} cm\n")
 
+    def export_svg(self):
+        """Equivalent fonctionnel de STARpaleomag_Py/app.exporter_svg (menu
+        Graphics > Export SVG...) - demande explicite utilisateur ("export
+        svg") : pas besoin d'un code d'export separe, matplotlib ecrit un
+        SVG directement depuis la Figure actuellement affichee dans le
+        canvas integre (`self.fig`, quel que soit le trace en cours -
+        reseau stereo, projet, carte VGP...)."""
+        if not self.fig.axes:
+            messagebox.showwarning("No graphic", "Plot something first (e.g. Plot stereo).")
+            return
+        path = filedialog.asksaveasfilename(
+            title="Export as SVG", defaultextension=".svg",
+            initialfile="stereo_plot.svg",
+            filetypes=[("SVG", "*.svg"), ("All files", "*.*")],
+        )
+        if not path:
+            return
+        try:
+            self.fig.savefig(path, format="svg")
+        except Exception as e:
+            messagebox.showerror("Error", f"SVG export failed:\n{e}")
+            return
+        self._afficher(f"Graphic exported: {path}\n")
+
+    def ouvrir_user_guide(self):
+        """Ouvre le guide utilisateur (StereoUtils_Py Guide) dans le
+        navigateur systeme - equivalent de STARpaleomag_Py/AMS_Py
+        app.ouvrir_user_guide (meme principe : un fichier HTML STATIQUE
+        livre EN LOCAL avec l'appli, voir _resource_path,
+        help/StereoUtils_Py_Guide.html) - demande explicite utilisateur
+        ("is it possible to write a guide for stereo")."""
+        guide_path = _resource_path("help", "StereoUtils_Py_Guide.html")
+        if not os.path.exists(guide_path):
+            messagebox.showerror("Error", f"User guide not found:\n{guide_path}")
+            return
+        webbrowser.open(f"file://{guide_path}")
+
     # ------------------------------------------------------------------
     # Menu
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _labeled(text, shortcut_name):
+        """Libelle avec le raccourci entre parentheses, SANS `accelerator=`
+        (voir AMS_Py/STARpaleomag_Py app._labeled - meme raison, voir
+        commentaire pres de SHORTCUTS)."""
+        return f"{text}    ({SHORTCUTS[shortcut_name][0]})"
+
+    def _setup_shortcuts(self):
+        """Lie reellement les raccourcis affiches dans les libelles de
+        menu (voir SHORTCUTS/_labeled) - jusque-la purement decoratifs."""
+        bindings = {
+            "hystnorm": self.hyst_toggle_normalize,
+        }
+        for name, callback in bindings.items():
+            self.root.bind_all(SHORTCUTS[name][1], lambda event, cb=callback: cb())
+
     def _setup_menu(self):
         menubar = tk.Menu(self.root)
-
-        command_menu = tk.Menu(menubar, tearoff=0)
-        command_menu.add_command(label="Plot-screen", command=self.plot_screen)
-        command_menu.add_command(label="Clear Screen", command=self.clear_screen)
-        command_menu.add_command(label="Graph title", command=self.set_graph_title)
-        menubar.add_cascade(label="Command", menu=command_menu)
 
         data_menu = tk.Menu(menubar, tearoff=0)
 
@@ -363,6 +497,13 @@ class StereoUtilsApp:
 
         self._iproj_var = tk.IntVar(value=self.iproj)
         proj_menu = tk.Menu(menubar, tearoff=0)
+        proj_menu.add_command(label="Plot stereo", command=self.plot_screen)
+        proj_menu.add_command(label="Plot stereo project", command=self.plot_project)
+        proj_menu.add_command(label="Plot VGPs on Map", command=self.plot_vgps_on_map)
+        proj_menu.add_command(label="Plot VGP Project...", command=self.plot_vgp_project)
+        proj_menu.add_command(label="Clear Screen", command=self.clear_screen)
+        proj_menu.add_command(label="Graph title...", command=self.set_graph_title)
+        proj_menu.add_separator()
         proj_menu.add_radiobutton(
             label="Stereographic (Wulff)", variable=self._iproj_var, value=0,
             command=lambda: self._set_iproj(0))
@@ -373,7 +514,9 @@ class StereoUtilsApp:
         proj_menu.add_command(label="Pole of projection...", command=self.set_pole_projection)
         proj_menu.add_command(label="Diameter...", command=self.set_diameter)
         proj_menu.add_command(label="Symbol size & color...", command=self.set_symbol_size_color)
-        menubar.add_cascade(label="Projection", menu=proj_menu)
+        proj_menu.add_separator()
+        proj_menu.add_command(label="Export SVG...", command=self.export_svg)
+        menubar.add_cascade(label="Graphics", menu=proj_menu)
 
         stats_menu = tk.Menu(menubar, tearoff=0)
         stats_menu.add_command(label="Fisher Statistics...", command=self.stat_fisher_statistics)
@@ -394,7 +537,6 @@ class StereoUtilsApp:
         project_menu.add_command(label="List Project", command=self.list_project)
         project_menu.add_command(label="Init Project", command=self.init_project)
         project_menu.add_separator()
-        project_menu.add_command(label="Plot Project", command=self.plot_project)
         project_menu.add_command(label="Fisher Project...", command=self.fisher_project)
         project_menu.add_separator()
         project_menu.add_command(label="Help Project (colors & symbols)", command=self.help_project)
@@ -423,6 +565,14 @@ class StereoUtilsApp:
         gmt_menu.add_command(label="Rotation vers GMT plot...", command=self.pu_rota2gmt)
         gmt_menu.add_command(label="Aide Rotation", command=self.pu_helprota)
         pu_menu.add_cascade(label="GMT rotation export", menu=gmt_menu)
+
+        sitemap_menu = tk.Menu(pu_menu, tearoff=0)
+        sitemap_menu.add_command(label="prmag to KML (Google Earth)...", command=self.pu_sitemap_kml)
+        sitemap_menu.add_command(label="prmag to GMT map script...", command=self.pu_sitemap_gmt)
+        sitemap_menu.add_command(label="Plot sites (matplotlib)...", command=self.pu_sitemap_plot)
+        sitemap_menu.add_checkbutton(
+            label="Basic basemap (coastlines, roads, cities)", variable=self.sitemap_basemap)
+        pu_menu.add_cascade(label="Site Map", menu=sitemap_menu)
 
         core_menu = tk.Menu(pu_menu, tearoff=0)
         core_menu.add_command(label="Core correction...", command=self.pu_core1)
@@ -463,9 +613,6 @@ class StereoUtilsApp:
         pmag_menu.add_separator()
         pmag_menu.add_command(label="Bootstrap ellipse", command=self.pmagpy_bootstrap_ellipse)
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Plot VGPs on Map", command=self.plot_vgps_on_map)
-        pmag_menu.add_command(label="Plot VGP Project...", command=self.plot_vgp_project)
-        pmag_menu.add_separator()
         pmag_menu.add_command(label="Find Elongation", command=self.find_elongation)
         pmag_menu.add_separator()
         pmag_menu.add_command(label="Reversal antipodality", command=self.test_reversal_antipodal)
@@ -476,6 +623,35 @@ class StereoUtilsApp:
         pmag_menu.add_separator()
         pmag_menu.add_command(label="Mean Inclination", command=self.mean_inclination)
         menubar.add_cascade(label="PmagPy-tools", menu=pmag_menu)
+
+        kt_menu = tk.Menu(menubar, tearoff=0)
+        kt_menu.add_command(label="Open .CUR/.CLW File...", command=self.kt_open_file)
+        kt_menu.add_command(label="Open Sample List...", command=self.kt_open_sample_list)
+        kt_menu.add_command(label="Select File from List...", command=self.kt_select_from_list)
+        kt_menu.add_separator()
+        kt_menu.add_command(label="Furnace Correction", command=self.kt_apply_furnace_correction)
+        kt_menu.add_command(label="Normalize by Mass", command=self.kt_normalize_by_mass)
+        kt_menu.add_command(label="Normalize by Volume", command=self.kt_normalize_by_volume)
+        kt_menu.add_separator()
+        kt_menu.add_command(label="Curie Point (2nd derivative)", command=self.kt_curie_point)
+        kt_menu.add_separator()
+        kt_menu.add_command(label="Plot K-T", command=self.kt_plot)
+        menubar.add_cascade(label="K-T", menu=kt_menu)
+
+        hyst_menu = tk.Menu(menubar, tearoff=0)
+        hyst_menu.add_command(label="Open AGM Sample List...", command=self.hyst_open_agm_list)
+        hyst_menu.add_command(label="Open VSM Sample List...", command=self.hyst_open_vsm_list)
+        hyst_menu.add_command(label="Select Sample to Plot...", command=self.hyst_select_from_list)
+        hyst_menu.add_separator()
+        hyst_menu.add_command(label="Paramagnetic Fit Threshold...", command=self.hyst_set_valsat)
+        hyst_menu.add_checkbutton(
+            label=self._labeled("Normalize Plot", "hystnorm"),
+            variable=self.hyst_normalize, command=self.hyst_refresh_plot)
+        menubar.add_cascade(label="Hysteresis", menu=hyst_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=0)
+        help_menu.add_command(label="User Guide", command=self.ouvrir_user_guide)
+        menubar.add_cascade(label="Help", menu=help_menu)
 
         self.root.config(menu=menubar)
 
@@ -1095,7 +1271,9 @@ class StereoUtilsApp:
         self._afficher("project cleared\n")
 
     def plot_project(self):
-        """Equivalent de `plotproject` (Project > Plot Project)."""
+        """Equivalent de `plotproject` (menu Graphics > Plot stereo project,
+        ex-menu "Project" - demande explicite utilisateur "move plot
+        stereo project... within the graphic menu")."""
         if not self.project_entries:
             messagebox.showwarning("No data", "Load or export a project first.")
             return
@@ -1495,6 +1673,84 @@ class StereoUtilsApp:
 
     def pu_helprota(self):
         self._afficher(pu.HELPROTA_TEXT)
+
+    # -- Site Map (site_map.py, port ad hoc - pas de source Fortran) ----------
+
+    def _pu_sitemap_open_prmag(self):
+        """Ouvre un .prmag et en extrait les sites (voir site_map.
+        read_prmag_sites) - factorise entre les 3 entrees du sous-menu
+        "Site Map". Retourne (path, sites) ou (None, None) si annule/
+        aucun site trouve."""
+        path = filedialog.askopenfilename(
+            title="Open .prmag", filetypes=[("prmag", "*.prmag"), ("All files", "*.*")])
+        if not path:
+            return None, None
+        sites = read_prmag_sites(path)
+        if not sites:
+            messagebox.showwarning("No sites", "No site (with a specimen block) found in this file.")
+            return None, None
+        return path, sites
+
+    def pu_sitemap_kml(self):
+        """Equivalent de "prmag to kml" (demande explicite utilisateur
+        "ajouter un sous-menu pour tracer les sites sur Google Earth,
+        prmag to kml") - voir site_map.write_kml."""
+        path, sites = self._pu_sitemap_open_prmag()
+        if sites is None:
+            return
+        default_name = os.path.splitext(os.path.basename(path))[0] + ".kml"
+        out_path = filedialog.asksaveasfilename(
+            title="Save KML", defaultextension=".kml", initialfile=default_name,
+            filetypes=[("KML", "*.kml"), ("All files", "*.*")])
+        if not out_path:
+            return
+        write_kml(sites, out_path, doc_name=os.path.splitext(os.path.basename(path))[0])
+        self._afficher(f"{len(sites)} site(s) written to {out_path} (open in Google Earth).\n")
+
+    def pu_sitemap_gmt(self):
+        """Equivalent de "GMT map pour tracer les sites sur une carte
+        topographique" (demande explicite utilisateur) - voir site_map.
+        write_gmt_map_script. Genere un script shell GMT6 (relief distant
+        @earth_relief_01m) + son fichier de donnees compagnon, A EXECUTER
+        PAR L'UTILISATEUR (GMT n'est jamais appele depuis cette
+        application, meme convention que "Rotation vers GMT plot...")."""
+        path, sites = self._pu_sitemap_open_prmag()
+        if sites is None:
+            return
+        default_name = os.path.splitext(os.path.basename(path))[0] + "_map.sh"
+        out_path = filedialog.asksaveasfilename(
+            title="Save GMT map script", defaultextension=".sh", initialfile=default_name,
+            filetypes=[("Shell script", "*.sh"), ("All files", "*.*")])
+        if not out_path:
+            return
+        data_path = write_gmt_map_script(sites, out_path)
+        self._afficher(
+            f"{len(sites)} site(s) - GMT script saved to {out_path}\n"
+            f"(data file: {data_path})\n"
+            f"Run it yourself (needs GMT >= 6 installed): bash \"{out_path}\"\n")
+
+    def pu_sitemap_plot(self):
+        """Equivalent de "une copie avec le simple matplotlib" (demande
+        explicite utilisateur "eventuellement une copie avec le simple
+        matplotlib", puis "is there a possibility to have a basic map
+        too") - voir site_map.build_site_map_figure. Le fond de carte
+        (case "Basic basemap (coastlines)", cartopy) est TENTE si coche,
+        avec repli vers la version simple sans reseau/donnees Natural
+        Earth en cache - affiche le texte EXACT de l'erreur rencontree
+        (pas un message generique - demande explicite utilisateur, le
+        premier message generique s'etant revele inutilisable pour
+        diagnostiquer l'echec reellement rencontre)."""
+        path, sites = self._pu_sitemap_open_prmag()
+        if sites is None:
+            return
+        _fig, got_basemap, error_text = build_site_map_figure(
+            sites, fig=self.fig, title=os.path.splitext(os.path.basename(path))[0],
+            basemap=self.sitemap_basemap.get())
+        self._redraw_canvas()
+        if self.sitemap_basemap.get() and not got_basemap:
+            self._afficher(
+                f"note: basemap unavailable ({error_text}) - showing the simple version "
+                "instead.\n")
 
     # -- Core/bedding corrections ---------------------------------------------
 
@@ -2168,10 +2424,13 @@ class StereoUtilsApp:
         self._afficher("\n".join(lines) + "\n")
 
     def plot_vgps_on_map(self):
-        """Equivalent de `plotvgp` (menu Pmag_Python > Plot VGPs on Map) :
-        `plot_map_pts.py` -> `ipmag.make_orthographic_map` + `ipmag.plot_vgp`
-        (les dec/inc en memoire representent directement longitude/latitude
-        du VGP, meme convention que le Fortran)."""
+        """Equivalent de `plotvgp` (menu Graphics > Plot VGPs on Map,
+        ex-menu "Pmag_Python"/"PmagPy-tools" - demande explicite
+        utilisateur "move plot stereo project; VGP on map VGP project;
+        within the graphic menu") : `plot_map_pts.py` ->
+        `ipmag.make_orthographic_map` + `ipmag.plot_vgp` (les dec/inc en
+        memoire representent directement longitude/latitude du VGP, meme
+        convention que le Fortran)."""
         if not self.directions:
             messagebox.showwarning("No data", "Load directions (VGP lon/lat) first.")
             return
@@ -2195,24 +2454,19 @@ class StereoUtilsApp:
         self._show_images(files)
 
     def plot_vgp_project(self):
-        """Equivalent VGP de "Plot Project" (reseau stereo) - demande
-        explicite utilisateur ("we will need to update the project in
-        Stereo to manage the VGP plot") : charge un fichier VGP - soit le
-        bloc "# VGP" d'un "Stereo Project" a 3 blocs, soit un ancien
-        fichier VGP autonome (voir stereo_project.load_vgp_entries, qui
-        gere les deux SANS jamais retomber sur le parseur stereonet a
-        plat - non pertinent pour des VGP) - et trace chaque VGP avec SON
-        PROPRE symbole/couleur (contrairement a "Plot VGPs on Map", qui
-        n'utilise qu'un seul marqueur/une seule couleur pour tous les
-        points de self.directions)."""
-        path = filedialog.askopenfilename(
-            title="VGP project file", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
-        if not path:
-            return
-        entries = sproj.load_vgp_entries(path)
-        if not entries:
+        """Equivalent VGP de "Plot stereo project" - demande explicite
+        utilisateur ("when we load a project, can we load the VGP too and
+        keep them in memory for later plot on a map? as with the mean
+        directions") : utilise DIRECTEMENT `self.project_vgp_entries`
+        (deja rempli par "Load Project" - voir load_project/
+        stereo_project.load_project_blocks), SANS reparcourir de fichier -
+        exactement le meme fonctionnement que `plot_project` avec
+        `self.project_entries`. Pour charger un AUTRE fichier VGP, passer
+        par "Load Project" d'abord (qui remplace aussi
+        self.project_vgp_entries), pas par un dialogue separe ici."""
+        if not self.project_vgp_entries:
             messagebox.showwarning(
-                "No data", "No VGP entry found (needs a header with dec/inc or paleolon/paleolat columns).")
+                "No data", "Load a project with a VGP block first (Graphics > Load Project...).")
             return
         lat_s = self._console_input("latitude of the view point : ", "0")
         if lat_s is None:
@@ -2230,9 +2484,466 @@ class StereoUtilsApp:
             lon = 0.0
         if lat < -90 or lat > 90:
             lat = 0.0
-        self._afficher(f"{len(entries)} VGP(s) loaded from {os.path.basename(path)}\n")
-        _res, files = sp.plot_vgp_project(entries, view_lat=lat, view_lon=lon)
+        _res, files = sp.plot_vgp_project(self.project_vgp_entries, view_lat=lat, view_lon=lon)
         self._show_images(files)
+
+    # ------------------------------------------------------------------
+    # K-T (susceptibilite vs temperature - curie_kt.py, port de Curie_OSX
+    # menu "KLY3_CS3") - demande explicite utilisateur ("integrer les
+    # deux fonctions principales de Curie_OSX, le traitement des donnees
+    # de susceptibilite (courbes K-T) ... ajouter un menu K-T").
+    # ------------------------------------------------------------------
+
+    def _kt_lookup_entry(self):
+        """Retrouve l'entree de la liste d'echantillons (voir kt_open_
+        sample_list) correspondant a self.kt_curve, par nom de fichier
+        (MAJUSCULES) - None si aucune liste n'est chargee ou si ce
+        fichier n'y figure pas."""
+        if not self.kt_sample_list or self.kt_curve is None:
+            return None
+        return self.kt_sample_list.get(os.path.basename(self.kt_curve.path).upper())
+
+    def _kt_correct_with_entry(self, curve, entry, base_dir):
+        """Applique la correction four decrite par `entry` (voir
+        curie_kt.apply_furnace_correction/apply_vessel_correction) -
+        factorise entre kt_apply_furnace_correction (correction manuelle
+        d'une courbe deja ouverte) et kt_select_from_list (pipeline
+        automatique, meme comportement que `selectfich`). Retourne
+        (nouvelle_courbe, message) ou (None, message_erreur) - n'affiche
+        rien elle-meme, laisse l'appelant decider (_showerror vs
+        _afficher)."""
+        if entry.zerodia == 999.0:
+            if not entry.empty_vessel:
+                return None, "code 999 but no empty-vessel filename in the list"
+            vessel_path = os.path.join(base_dir, entry.empty_vessel)
+            if not os.path.exists(vessel_path):
+                return None, f"empty-vessel file not found: {vessel_path}"
+            vessel_curve = read_cur_file(vessel_path)
+            corrected = apply_vessel_correction(curve, vessel_curve)
+            return corrected, f"furnace correction: full empty-vessel curve {entry.empty_vessel}"
+        corrected = apply_furnace_correction(curve, entry.zerodia)
+        return corrected, f"furnace correction: subtracted {entry.zerodia:g}"
+
+    def kt_open_file(self):
+        """Equivalent de `openkt` (CurieOSX_x.f95:189-201) -> `saisie`
+        (divers.f:3-182, branche a 2 colonnes - voir curie_kt.py)."""
+        path = filedialog.askopenfilename(
+            title="Open .CUR/.CLW File",
+            filetypes=[("Curie K-T", "*.CUR *.cur *.CLW *.clw"), ("All files", "*.*")])
+        if not path:
+            return
+        self.kt_curve = read_cur_file(path)
+        self.kt_curie_heating = None
+        self.kt_curie_cooling = None
+        entry = self._kt_lookup_entry()
+        msg = (
+            f"{self.kt_curve.sample}: {len(self.kt_curve.temp)} point(s), "
+            f"T = {self.kt_curve.temp.min():.1f} to {self.kt_curve.temp.max():.1f} °C\n"
+        )
+        if entry is not None:
+            msg += (
+                f"(matching sample-list entry found: suscep={entry.suscep:g} SI, "
+                f"masse={entry.masse:g} mg, zerodia={entry.zerodia:g})\n"
+            )
+        self._afficher(msg)
+
+    def kt_open_sample_list(self):
+        """Equivalent de `openlistekt` (CurieOSX_x.f95:431-473, voir
+        curie_kt.read_kt_sample_list pour l'ecart de format reel)."""
+        path = filedialog.askopenfilename(
+            title="Open Sample List", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        self.kt_sample_list = read_kt_sample_list(path)
+        self.kt_list_dir = os.path.dirname(path)
+        self._afficher(f"{len(self.kt_sample_list)} sample-list entry/entries loaded from "
+                        f"{os.path.basename(path)}\n")
+
+    def kt_select_from_list(self):
+        """Equivalent de `selectfich` (CurieOSX_x.f95:536-572, CTRL+L) :
+        parcourt self.kt_sample_list - pour l'entree choisie, ouvre son
+        fichier .CUR/.CLW, applique AUTOMATIQUEMENT la correction four
+        (constante ou vase vide selon `zerodia`, voir _kt_correct_with_
+        entry) PUIS la normalisation appropriee (volume si `suscep!=0`,
+        sinon masse si `masse!=0`, sinon aucune - meme choix que le
+        Fortran), calcule le point de Curie et trace la courbe - boucle
+        jusqu'a "0"/Escape pour passer a l'echantillon suivant (demande
+        explicite utilisateur "when we open the list, we should be able
+        to go through and select the sample to plot")."""
+        if not self.kt_sample_list:
+            self._showwarning("No sample list", "Open a sample list first (Open Sample List...).")
+            return
+        entries = list(self.kt_sample_list.values())
+        lines = []
+        for i, e in enumerate(entries, start=1):
+            extra = f"  vessel={e.empty_vessel}" if e.empty_vessel else ""
+            lines.append(
+                f"{i:3d} : {e.filename:<16} suscep={e.suscep:g}  masse={e.masse:g}  "
+                f"zerodia={e.zerodia:g}{extra}")
+        self._afficher("\n".join(lines) + "\n")
+
+        while True:
+            choice_s = self._console_input(
+                f"Line number to open+plot (0 or Escape to stop, 1-{len(entries)}): ", "0")
+            if choice_s is None:
+                return
+            choice_s = choice_s.strip()
+            if not choice_s or choice_s == "0":
+                return
+            try:
+                idx = int(choice_s)
+            except ValueError:
+                self._showerror("Error", "Must be an integer.")
+                continue
+            if not (1 <= idx <= len(entries)):
+                self._showerror("Error", f"Out of range (1-{len(entries)}).")
+                continue
+            self._kt_process_list_entry(entries[idx - 1])
+
+    def _kt_process_list_entry(self, entry):
+        """Pipeline automatique d'UNE entree de liste - voir kt_select_
+        from_list. Facteur commun avec les etapes manuelles (kt_open_
+        file/kt_apply_furnace_correction/kt_normalize_by_.../kt_curie_
+        point/kt_plot), mais enchainees sans intervention (meme
+        comportement que `selectfich`)."""
+        base_dir = self.kt_list_dir or "."
+        path = os.path.join(base_dir, entry.filename)
+        if not os.path.exists(path):
+            self._showerror("Error", f"File not found: {path}")
+            return
+        curve = read_cur_file(path)
+
+        corrected, msg = self._kt_correct_with_entry(curve, entry, base_dir)
+        if corrected is None:
+            self._showerror("Error", f"{entry.filename}: {msg}")
+            return
+        curve = corrected
+
+        if entry.suscep:
+            is_cur = os.path.splitext(path)[1].upper() == ".CUR"
+            curve = normalize_by_volume(curve, entry.suscep, is_cur=is_cur)
+        elif entry.masse:
+            curve = normalize_by_mass(curve, entry.masse)
+
+        self.kt_curve = curve
+        self.kt_curie_heating, self.kt_curie_cooling = curie_point_second_derivative(curve)
+        heat = f"{self.kt_curie_heating:.1f}" if self.kt_curie_heating is not None else "n/a"
+        cool = f"{self.kt_curie_cooling:.1f}" if self.kt_curie_cooling is not None else "n/a"
+        self._afficher(
+            f"{entry.filename}: {len(curve.temp)} point(s), {msg}, "
+            f"normalized={curve.normalized or 'no'} - "
+            f"Curie heating: {heat} °C, cooling: {cool} °C\n"
+        )
+        build_kt_figure(
+            curve, curie_heating=self.kt_curie_heating,
+            curie_cooling=self.kt_curie_cooling, fig=self.fig)
+        self._redraw_canvas()
+
+    def kt_apply_furnace_correction(self):
+        """Equivalent de `corrfour` (CurieOSX_x.f95:240-291) - deux
+        branches (voir curie_kt.apply_furnace_correction/apply_vessel_
+        correction) : `zerodia` pris dans la liste d'echantillons si ce
+        fichier y figure (sinon demande directement, meme repli que le
+        Fortran quand `iselect==999`, ouverture d'un fichier isole sans
+        liste) - si `zerodia==999`, le fichier du vase vide associe
+        (`entry.empty_vessel`) est ouvert et sa courbe COMPLETE soustraite
+        point par point plutot qu'une simple constante (demande explicite
+        utilisateur - "999 indicate that a whole empty vessel should be
+        used")."""
+        if self.kt_curve is None:
+            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            return
+        entry = self._kt_lookup_entry()
+
+        if entry is not None and entry.zerodia == 999.0:
+            base_dir = self.kt_list_dir or os.path.dirname(self.kt_curve.path)
+            corrected, msg = self._kt_correct_with_entry(self.kt_curve, entry, base_dir)
+            if corrected is None:
+                self._showerror("Error", msg)
+                return
+            self.kt_curve = corrected
+            self._afficher(f"Furnace correction applied ({msg}).\n")
+            return
+
+        default = f"{entry.zerodia:g}" if entry is not None else "-142.8"
+        zerodia_s = self._console_input("Furnace/holder background value to subtract: ", default)
+        if zerodia_s is None:
+            return
+        try:
+            zerodia = float(zerodia_s)
+        except ValueError:
+            self._showerror("Error", "Must be a number.")
+            return
+        self.kt_curve = apply_furnace_correction(self.kt_curve, zerodia)
+        self._afficher(f"Furnace correction applied (subtracted {zerodia:g}).\n")
+
+    def kt_normalize_by_mass(self):
+        """Equivalent de `normas` (CurieOSX_x.f95:293-330, voir
+        curie_kt.normalize_by_mass)."""
+        if self.kt_curve is None:
+            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            return
+        if self.kt_curve.normalized is not None:
+            self._showwarning("Already normalized", "This curve is already normalized.")
+            return
+        entry = self._kt_lookup_entry()
+        default = f"{entry.masse:g}" if entry is not None and entry.masse else ""
+        mass_s = self._console_input("Sample mass (mg): ", default)
+        if mass_s is None:
+            return
+        try:
+            mass_mg = float(mass_s)
+        except ValueError:
+            self._showerror("Error", "Must be a number.")
+            return
+        if mass_mg <= 0.0:
+            self._showerror("Error", "Mass must be > 0.")
+            return
+        self.kt_curve = normalize_by_mass(self.kt_curve, mass_mg)
+        self._afficher(f"Normalized by mass ({mass_mg:g} mg) - values in 1e-6 m³/kg.\n")
+
+    def kt_normalize_by_volume(self):
+        """Equivalent de `norvol` (CurieOSX_x.f95:332-372, voir
+        curie_kt.normalize_by_volume)."""
+        if self.kt_curve is None:
+            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            return
+        if self.kt_curve.normalized is not None:
+            self._showwarning("Already normalized", "This curve is already normalized.")
+            return
+        entry = self._kt_lookup_entry()
+        default = f"{entry.suscep:g}" if entry is not None and entry.suscep else ""
+        suscep_s = self._console_input("Independent bulk susceptibility (SI): ", default)
+        if suscep_s is None:
+            return
+        try:
+            suscep = float(suscep_s)
+        except ValueError:
+            self._showerror("Error", "Must be a number.")
+            return
+        is_cur = os.path.splitext(self.kt_curve.path)[1].upper() == ".CUR"
+        self.kt_curve = normalize_by_volume(self.kt_curve, suscep, is_cur=is_cur)
+        self._afficher(f"Normalized by volume (bulk={suscep:g} SI) - values in SI.\n")
+
+    def kt_curie_point(self):
+        """Equivalent de `tauxe` (divers.f:740-816 - voir curie_kt.
+        curie_point_second_derivative pour l'ecart avec le nom "Tauxe
+        method")."""
+        if self.kt_curve is None:
+            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            return
+        self.kt_curie_heating, self.kt_curie_cooling = curie_point_second_derivative(self.kt_curve)
+        heat = f"{self.kt_curie_heating:.1f}" if self.kt_curie_heating is not None else "n/a"
+        cool = f"{self.kt_curie_cooling:.1f}" if self.kt_curie_cooling is not None else "n/a"
+        self._afficher(
+            f"Curie temperature (2nd-derivative maximum) - heating: {heat} °C, "
+            f"cooling: {cool} °C\n"
+        )
+
+    def kt_plot(self):
+        """Equivalent de `plotkt` (CurieOSX_x.f95:232-235) ->
+        `tracerklyhot`/`tracerklycold` (voir curie_kt.build_kt_figure -
+        matplotlib direct, pas plotlib.PlotContext, demande explicite
+        utilisateur "Faire les graphics sans passer par mes anciennes
+        fonctions (plot, symbol etc)")."""
+        if self.kt_curve is None:
+            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            return
+        build_kt_figure(
+            self.kt_curve, curie_heating=self.kt_curie_heating,
+            curie_cooling=self.kt_curie_cooling, fig=self.fig)
+        self._redraw_canvas()
+
+    # ------------------------------------------------------------------
+    # Hysteresis (curie_hyst.py, port de Curie_OSX menu "Hysteresis") -
+    # demande explicite utilisateur ("integrer les deux fonctions
+    # principales de Curie_OSX ... et des donnees d'Hysteresis").
+    # ------------------------------------------------------------------
+
+    def hyst_open_agm_list(self):
+        """Equivalent de la liste lue par `selectfichhystAGM`
+        (hysteresis.f:717-945, voir curie_hyst.read_agm_sample_list) -
+        format AGM historique (Princeton MicroMag "Model 2900 ASCII Data
+        File", verifie sur /Users/pierrickroperch/Paleomag_data/
+        Hyste_Chili_2)."""
+        path = filedialog.askopenfilename(
+            title="Open AGM Sample List", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        self.hyst_sample_list = read_agm_sample_list(path)
+        self.hyst_list_dir = os.path.dirname(path)
+        self.hyst_format = "AGM"
+        self._afficher(
+            f"{len(self.hyst_sample_list)} AGM sample-list entry/entries loaded from "
+            f"{os.path.basename(path)}\n")
+
+    def hyst_open_vsm_list(self):
+        """Format VSM moderne (voir curie_hyst.read_vsm_sample_list),
+        verifie sur /Users/pierrickroperch/Paleomag_data/VSM_Nov2022 -
+        PAS un format du Fortran d'origine."""
+        path = filedialog.askopenfilename(
+            title="Open VSM Sample List", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return
+        self.hyst_sample_list = read_vsm_sample_list(path)
+        self.hyst_list_dir = os.path.dirname(path)
+        self.hyst_format = "VSM"
+        self._afficher(
+            f"{len(self.hyst_sample_list)} VSM sample-list entry/entries loaded from "
+            f"{os.path.basename(path)}\n")
+
+    def hyst_set_valsat(self):
+        """Equivalent de `prefhyste`/`valsat` (CurieOSX_x.f95 - fraction
+        du champ maximal au-dela de laquelle un point est considere
+        "haut champ" pour le fit paramagnetique, voir curie_hyst.
+        compute_hysteresis) - PAS une constante figee, demande explicite
+        (verifie ne pas reproduire exactement Resu_Chile2.txt avec la
+        valeur par defaut 0.7, voir docstring de module)."""
+        s = self._console_input(
+            "Paramagnetic fit high-field threshold (fraction of max field, 0-1): ",
+            f"{self.hyst_valsat_frac:g}")
+        if s is None:
+            return
+        try:
+            v = float(s)
+        except ValueError:
+            self._showerror("Error", "Must be a number.")
+            return
+        if not (0.0 < v < 1.0):
+            self._showerror("Error", "Must be between 0 and 1.")
+            return
+        self.hyst_valsat_frac = v
+        self._afficher(f"Paramagnetic fit threshold set to {v:g}.\n")
+
+    def hyst_select_from_list(self):
+        """Equivalent de la boucle de selection de `selectfichhystAGM`
+        (hysteresis.f:745-751, meme principe que kt_select_from_list
+        cote K-T - demande explicite utilisateur "when we open the list,
+        we should be able to go through and select the sample to plot",
+        appliquee ici aussi) : pour l'entree choisie, ouvre ses 2
+        fichiers (boucle + remanence/DCD, format AGM ou VSM selon
+        `self.hyst_format`), calcule Js/Jrs/Hc/Hcr et trace - boucle
+        jusqu'a "0"/Escape."""
+        if not self.hyst_sample_list:
+            self._showwarning(
+                "No sample list", "Open an AGM or VSM sample list first.")
+            return
+        entries = list(self.hyst_sample_list.values())
+        lines = [
+            f"{i:3d} : {e.filename:<14} masse={e.masse:g} mg"
+            for i, e in enumerate(entries, start=1)
+        ]
+        self._afficher(f"({self.hyst_format})\n" + "\n".join(lines) + "\n")
+
+        while True:
+            choice_s = self._console_input(
+                f"Line number to open+plot (0 or Escape to stop, 1-{len(entries)}): ", "0")
+            if choice_s is None:
+                return
+            choice_s = choice_s.strip()
+            if not choice_s or choice_s == "0":
+                return
+            try:
+                idx = int(choice_s)
+            except ValueError:
+                self._showerror("Error", "Must be an integer.")
+                continue
+            if not (1 <= idx <= len(entries)):
+                self._showerror("Error", f"Out of range (1-{len(entries)}).")
+                continue
+            self._hyst_process_entry(entries[idx - 1])
+
+    def _hyst_process_entry(self, entry):
+        """Pipeline automatique d'UNE entree de liste - voir hyst_select_
+        from_list."""
+        try:
+            if self.hyst_format == "AGM":
+                loop_path = os.path.join(self.hyst_list_dir, entry.filename)
+                backfield_path = loop_path + "-r"
+                if not (os.path.exists(loop_path) and os.path.exists(backfield_path)):
+                    self._showerror(
+                        "Error", f"File(s) not found for {entry.filename} "
+                        f"(expected {entry.filename} and {entry.filename}-r).")
+                    return
+                loop = read_agm_file(loop_path)
+                backfield = read_agm_file(backfield_path)
+            else:
+                hyst_path, backfield_path = vsm_paths_for(self.hyst_list_dir, entry.filename)
+                if not (os.path.exists(hyst_path) and os.path.exists(backfield_path)):
+                    self._showerror(
+                        "Error", f"File(s) not found for {entry.filename} "
+                        f"(expected \"{entry.filename} - 1.csv\" and \"{entry.filename} - 2.csv\").")
+                    return
+                loop = read_vsm_csv(hyst_path)
+                backfield = read_vsm_csv(backfield_path)
+        except OSError as e:
+            self._showerror("Error", f"{entry.filename}: {e}")
+            return
+
+        res = compute_hysteresis(loop, backfield, entry.masse, valsat_frac=self.hyst_valsat_frac)
+        if res is None:
+            self._showerror(
+                "Error",
+                f"{entry.filename}: could not compute hysteresis parameters "
+                "(loop too short, or no point above the high-field threshold).")
+            return
+        res.sample = entry.filename
+        self.hyst_result = res
+        self.hyst_max_field = None  # reinitialise l'echelle X pour un nouvel echantillon
+        self._afficher(format_hysteresis_result(res))
+        self.hyst_refresh_plot()
+
+    def hyst_refresh_plot(self):
+        """Redessine self.hyst_result avec les reglages courants
+        (self.hyst_normalize/self.hyst_max_field) SANS relire les
+        fichiers - appelee par la case a cocher "Normalize Plot" et par
+        le clic-sur-axe-X (voir _on_plot_pick)."""
+        if self.hyst_result is None:
+            return
+        build_hysteresis_figure(
+            self.hyst_result, fig=self.fig,
+            max_field=self.hyst_max_field, normalize=self.hyst_normalize.get())
+        self._redraw_canvas()
+
+    def hyst_toggle_normalize(self):
+        """Bascule "Normalize Plot" - appelee par le raccourci clavier
+        (voir SHORTCUTS["hystnorm"]/_setup_shortcuts), la case a cocher
+        elle-meme bascule sa propre variable au clic et appelle
+        directement hyst_refresh_plot."""
+        self.hyst_normalize.set(not self.hyst_normalize.get())
+        self.hyst_refresh_plot()
+
+    def _on_plot_pick(self, event):
+        """Gestionnaire unique de clic-sur-axe (pick_event) - pour
+        l'instant uniquement l'axe X du graphique Hysteresis (voir
+        curie_hyst._register_xaxis_pick) - demande explicite utilisateur
+        ("to click on the Xaxis to change the scale (Max field
+        value)")."""
+        kind = getattr(event.artist, "_su_pick_kind", None)
+        if kind == "hyst_xaxis":
+            self._prompt_hyst_max_field()
+
+    def _prompt_hyst_max_field(self):
+        """Invite pour changer la borne X (champ max, Tesla) du
+        graphique Hysteresis - symetrique (-max, +max)."""
+        default = "" if self.hyst_max_field is None else f"{self.hyst_max_field:g}"
+        s = self._console_input("Max field to display (T, empty = auto): ", default)
+        if s is None:
+            return
+        s = s.strip()
+        if not s:
+            self.hyst_max_field = None
+        else:
+            try:
+                v = float(s)
+            except ValueError:
+                self._showerror("Error", "Must be a number.")
+                return
+            if v <= 0:
+                self._showerror("Error", "Must be > 0.")
+                return
+            self.hyst_max_field = v
+        self.hyst_refresh_plot()
 
 
 def main():

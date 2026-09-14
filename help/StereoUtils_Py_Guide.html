@@ -1,0 +1,949 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StereoUtils_Py Guide</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --bg: #f1ede3;
+    --surface: #fbf9f4;
+    --surface-2: #e9e2d2;
+    --ink: #2b2620;
+    --ink-soft: #6b6152;
+    --ink-faint: #948a78;
+    --line: #ddd4bf;
+    --accent: #2b4c8c;
+    --accent-ink: #ffffff;
+    --accent-soft: #e3e9f4;
+    --rust: #9a4520;
+    --rust-soft: #f3e3da;
+    --code-bg: #eae3d3;
+    --shadow: 0 1px 2px rgba(43,38,32,0.06), 0 8px 24px -12px rgba(43,38,32,0.18);
+    --radius: 10px;
+  }
+
+  :root:not([data-theme="light"]) {
+    @media (prefers-color-scheme: dark) {
+      --bg: #1c1a16;
+      --surface: #242019;
+      --surface-2: #2d2820;
+      --ink: #ece6d8;
+      --ink-soft: #b3a891;
+      --ink-faint: #8a8070;
+      --line: #3c362b;
+      --accent: #7fa0e0;
+      --accent-ink: #14213d;
+      --accent-soft: #263252;
+      --rust: #e0895f;
+      --rust-soft: #3a2620;
+      --code-bg: #2a251d;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #1c1a16;
+    --surface: #242019;
+    --surface-2: #2d2820;
+    --ink: #ece6d8;
+    --ink-soft: #b3a891;
+    --ink-faint: #8a8070;
+    --line: #3c362b;
+    --accent: #7fa0e0;
+    --accent-ink: #14213d;
+    --accent-soft: #263252;
+    --rust: #e0895f;
+    --rust-soft: #3a2620;
+    --code-bg: #2a251d;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 24px -12px rgba(0,0,0,0.5);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Public Sans", system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  h1, h2, h3 {
+    font-family: "Fraunces", Georgia, serif;
+    font-weight: 600;
+    text-wrap: balance;
+    color: var(--ink);
+  }
+
+  code, .mono {
+    font-family: "IBM Plex Mono", ui-monospace, monospace;
+  }
+
+  a { color: var(--accent); }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    gap: 0;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  /* ---------- Hero ---------- */
+  .hero {
+    grid-column: 1 / -1;
+    padding: 4rem 2.5rem 2.5rem;
+    border-bottom: 1px solid var(--line);
+    display: flex;
+    align-items: flex-end;
+    gap: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .hero-mark {
+    width: 64px;
+    height: 64px;
+    flex: none;
+  }
+
+  .hero-text .eyebrow {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--rust);
+    margin: 0 0 0.6rem;
+  }
+
+  .hero-text h1 {
+    font-size: clamp(2rem, 4vw, 2.75rem);
+    margin: 0 0 0.5rem;
+    letter-spacing: -0.01em;
+  }
+
+  .hero-text p {
+    margin: 0;
+    max-width: 62ch;
+    color: var(--ink-soft);
+    font-size: 1.05rem;
+  }
+
+  /* ---------- Nav ---------- */
+  nav.toc {
+    padding: 2.5rem 1.5rem 3rem 2.5rem;
+    position: sticky;
+    top: 0;
+    align-self: start;
+    max-height: 100vh;
+    overflow-y: auto;
+  }
+
+  nav.toc .toc-title {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 0.9rem;
+  }
+
+  nav.toc ul {
+    list-style: none;
+    margin: 0 0 1.75rem;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+  }
+
+  nav.toc a {
+    display: block;
+    text-decoration: none;
+    color: var(--ink-soft);
+    font-size: 0.92rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 7px;
+    border-left: 2px solid transparent;
+  }
+
+  nav.toc a:hover {
+    background: var(--surface-2);
+    color: var(--ink);
+  }
+
+  nav.toc .toc-sub a {
+    padding-left: 1.1rem;
+    font-size: 0.85rem;
+  }
+
+  /* ---------- Main ---------- */
+  main {
+    padding: 2.5rem 2.5rem 6rem 1.5rem;
+    min-width: 0;
+  }
+
+  .intro {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.75rem 2rem;
+    margin-bottom: 3rem;
+    box-shadow: var(--shadow);
+  }
+
+  .intro h2 { margin-top: 0; font-size: 1.3rem; }
+
+  .workflow {
+    list-style: none;
+    counter-reset: step;
+    margin: 1.2rem 0 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 0.9rem;
+  }
+
+  .workflow li {
+    counter-increment: step;
+    position: relative;
+    padding: 0.9rem 1rem 0.9rem 2.4rem;
+    background: var(--surface-2);
+    border-radius: 8px;
+    font-size: 0.92rem;
+  }
+
+  .workflow li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0.75rem;
+    top: 0.85rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: var(--accent);
+  }
+
+  .workflow strong { display: block; color: var(--ink); margin-bottom: 0.15rem; }
+  .workflow span { color: var(--ink-soft); }
+
+  section.menu {
+    margin-bottom: 3.5rem;
+    scroll-margin-top: 1.5rem;
+  }
+
+  section.menu > h2 {
+    font-size: 1.6rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+    margin-bottom: 0.3rem;
+  }
+
+  section.menu > h2 .menu-tag {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.85rem;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 0.15rem 0.55rem;
+    border-radius: 999px;
+    font-weight: 500;
+  }
+
+  section.menu > .menu-desc {
+    color: var(--ink-soft);
+    margin: 0 0 1.5rem;
+    max-width: 68ch;
+  }
+
+  h3.group {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.78rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    margin: 2rem 0 0.75rem;
+    scroll-margin-top: 1.5rem;
+  }
+
+  h3.group:first-of-type { margin-top: 0.5rem; }
+
+  .item {
+    display: grid;
+    grid-template-columns: minmax(180px, 260px) 1fr;
+    gap: 0.4rem 1.4rem;
+    padding: 0.85rem 0;
+    border-top: 1px solid var(--line);
+    align-items: baseline;
+  }
+
+  .item:last-child { border-bottom: 1px solid var(--line); }
+
+  .item .label {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.88rem;
+    color: var(--ink);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+  }
+
+  .item .desc {
+    color: var(--ink-soft);
+    font-size: 0.95rem;
+  }
+
+  .item .desc strong { color: var(--ink); font-weight: 600; }
+  .item .desc code {
+    background: var(--code-bg);
+    padding: 0.1rem 0.4rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  .shortcut {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.72rem;
+    color: var(--rust);
+    background: var(--rust-soft);
+    padding: 0.08rem 0.4rem;
+    border-radius: 5px;
+    white-space: nowrap;
+  }
+
+  .badge-new {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--accent);
+    border: 1px solid var(--accent);
+    padding: 0.03rem 0.4rem;
+    border-radius: 5px;
+    font-weight: 600;
+  }
+
+  .badge-todo {
+    font-family: "Public Sans", sans-serif;
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--ink-faint);
+    border: 1px solid var(--line);
+    padding: 0.03rem 0.4rem;
+    border-radius: 5px;
+  }
+
+  .callout {
+    background: var(--accent-soft);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+    padding: 0.9rem 1.1rem;
+    margin: 1rem 0;
+    font-size: 0.92rem;
+  }
+
+  .callout strong { color: var(--ink); }
+
+  .codeblock {
+    background: var(--code-bg);
+    border-radius: 8px;
+    padding: 0.9rem 1.1rem;
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.8rem;
+    line-height: 1.55;
+    overflow-x: auto;
+    margin: 0.7rem 0 1.3rem;
+    color: var(--ink);
+    white-space: pre;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    margin: 0.5rem 0 2rem;
+  }
+
+  table.maptable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.87rem;
+    min-width: 640px;
+  }
+
+  table.maptable th, table.maptable td {
+    text-align: left;
+    padding: 0.55rem 0.9rem 0.55rem 0;
+    border-top: 1px solid var(--line);
+    vertical-align: top;
+  }
+
+  table.maptable th {
+    font-family: "IBM Plex Mono", monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+
+  table.maptable td:first-child, table.maptable th:first-child {
+    font-family: "IBM Plex Mono", monospace;
+    white-space: nowrap;
+    color: var(--ink);
+  }
+
+  table.maptable td code {
+    background: var(--code-bg);
+    padding: 0.08rem 0.35rem;
+    border-radius: 4px;
+    font-size: 0.85em;
+  }
+
+  table.maptable td:last-child, table.maptable th:last-child {
+    color: var(--ink-soft);
+  }
+
+  footer {
+    grid-column: 1 / -1;
+    padding: 2.5rem;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 0.85rem;
+    text-align: center;
+  }
+
+  @media (max-width: 900px) {
+    .layout { grid-template-columns: 1fr; }
+    nav.toc {
+      position: static;
+      max-height: none;
+      padding: 1.5rem 1.5rem 0;
+      border-bottom: 1px solid var(--line);
+    }
+    nav.toc ul { flex-direction: row; flex-wrap: wrap; margin-bottom: 0.5rem; }
+    nav.toc .toc-sub { display: none; }
+    main { padding: 2rem 1.5rem 4rem; }
+    .item { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <header class="hero">
+    <svg class="hero-mark" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="32" cy="32" r="29" stroke="var(--ink-faint)" stroke-width="1.2"/>
+      <ellipse cx="32" cy="32" rx="29" ry="11" stroke="var(--ink-faint)" stroke-width="1"/>
+      <ellipse cx="32" cy="32" rx="11" ry="29" stroke="var(--ink-faint)" stroke-width="1"/>
+      <circle cx="32" cy="32" r="20" stroke="var(--accent)" stroke-width="1" stroke-dasharray="2 2"/>
+      <circle cx="32" cy="32" r="2" fill="var(--ink)"/>
+      <path d="M20 20 L44 44 M44 20 L20 44" stroke="var(--rust)" stroke-width="1.1" opacity="0.55"/>
+    </svg>
+    <div class="hero-text">
+      <p class="eyebrow">Menu reference</p>
+      <h1>StereoUtils_Py</h1>
+      <p>Paleomagnetic stereonet and directional-statistics workbench — equal-area/stereographic plotting, Fisher statistics and their variants, structural corrections, VGP conversions and mapping, and a PmagPy-backed toolbox. This guide describes what each entry in the six menus (Data, Graphics, Statistics, Project, Pmag&nbsp;Utilities, PmagPy-tools) does, in the same order they appear on screen.</p>
+    </div>
+  </header>
+
+  <nav class="toc">
+    <p class="toc-title">About</p>
+    <ul>
+      <li><a href="#history">History and foreword</a></li>
+    </ul>
+    <p class="toc-title">Contents</p>
+    <ul>
+      <li><a href="#intro">Data formats</a></li>
+      <li><a href="#workflow">Typical session flow</a></li>
+    </ul>
+    <p class="toc-title">Menus</p>
+    <ul>
+      <li><a href="#data">Data</a></li>
+      <li><a href="#graphics">Graphics</a></li>
+      <li><a href="#statistics">Statistics</a></li>
+      <li><a href="#project">Project</a></li>
+      <li><a href="#pu">Pmag Utilities</a></li>
+      <li><a href="#pmagpy">PmagPy-tools</a></li>
+    </ul>
+    <p class="toc-title">Reference</p>
+    <ul>
+      <li><a href="#stereoproject">Stereo Project file format</a>
+        <ul class="toc-sub">
+          <li><a href="#sp-directions">Individual directions</a></li>
+          <li><a href="#sp-means">Mean directions</a></li>
+          <li><a href="#sp-vgp">VGP</a></li>
+        </ul>
+      </li>
+    </ul>
+  </nav>
+
+  <main>
+
+    <section class="intro" id="history">
+      <h2>History and foreword</h2>
+      <p>StereoUtils_Py is a port of <code>Stereo_V19</code> (<code>StereoOSX_x.f95</code> + a family of companion Fortran files — <code>stereograph.f</code>, <code>plotstereo.f95</code>, <code>pmagoutils.f</code>…), a Fortran/Qt5 stereonet and directional-statistics application from the same paleomagnetism laboratory (Géosciences Rennes) as its sibling applications <strong>STARpaleomag_Py</strong> and <strong>AMS_Py</strong>. Where those two process specimen measurements and anisotropy tensors, StereoUtils_Py is the general-purpose <em>directional statistics</em> toolbox: the stereonet itself (Wulff/Schmidt projections, "layers" of directions/means/great circles), the Fisher-family statistical tests, structural (bedding/borehole/fold) corrections, and a large collection of VGP/paleolatitude/rotation utilities that the original Fortran grouped under "Pmag Utilities".</p>
+      <p>One menu, <strong>PmagPy-tools</strong>, is not a port at all: rather than reimplement routines the Fortran itself only <em>shelled out</em> to (writing a file, then invoking a standalone PmagPy command-line script — <code>plot_map_pts.py</code>, <code>incfish.py</code>, <code>foldtest.py</code>…), this port calls the installed <code>pmagpy</code> Python package's own functions directly. Same numerical results, no intermediate files or subprocess.</p>
+      <div class="callout">
+        <strong>Open source.</strong> The source code is available on GitHub alongside STARpaleomag_Py and AMS_Py. As with its sibling applications, researchers and students wishing to use or modify this program are encouraged to do so through Claude.
+      </div>
+    </section>
+
+    <section class="intro" id="intro">
+      <h2>Data formats</h2>
+      <p>StereoUtils_Py works with several small, independent in-memory lists rather than one unified project: <strong>directions</strong> (dec/inc pairs, optionally with a symbol), <strong>means</strong> (dec/inc/α95, drawn with a confidence cone), and <strong>great circles</strong> (pole dec/inc, optionally with a sector). Each has its own load/manual-entry/list/delete commands under <strong>Data</strong>, and its own file format — a plain text file with dec/inc (and α95, for means) columns, either positional or with a self-describing header (column names on the first line, in any order — <code>#dec inc a95</code> or <code>#site dec inc alpha95</code> are both read correctly). Every file reader in the app follows this same header-or-positional convention.</p>
+      <p>Beyond these three lists, two file-based systems layer on top: the <strong>Project</strong> system (a multi-"layer" file combining directions, means and great circles with per-entry symbol/color/size, meant to be hand-edited in a text editor — see <a href="#stereoproject">Stereo Project file format</a> below) and <strong>VGP</strong> handling (paleomagnetic pole positions, plotted on a world map rather than the stereonet — either loose dec/inc-as-lon/lat pairs via <strong>Plot VGPs on Map</strong>, or a full VGP project block with per-point symbol/color and dp/dm confidence ellipses).</p>
+      <div class="callout">
+        <strong>Shared file with STARpaleomag_Py.</strong> The Stereo Project format is written directly by STARpaleomag_Py's own <strong>export results to Stereo_Py</strong> (menu File), so a site's specimen fits, site mean, and VGP can all be reviewed here without any manual reformatting — see the reference section for the exact column layout.
+      </div>
+    </section>
+
+    <section class="intro" id="workflow">
+      <h2>Typical session flow</h2>
+      <p>Two common flows, depending on where the data comes from:</p>
+      <ol class="workflow">
+        <li><strong>Load</strong><span>Data → Load from file, or Manual entry</span></li>
+        <li><strong>Plot</strong><span>Graphics → Plot stereo</span></li>
+        <li><strong>Test</strong><span>Statistics → Fisher Statistics… (or another test)</span></li>
+        <li><strong>Export</strong><span>Graphics → Export SVG…</span></li>
+      </ol>
+      <p style="margin-top:1.2rem;">…or, coming from STARpaleomag_Py with an already-exported project file:</p>
+      <ol class="workflow">
+        <li><strong>Load</strong><span>Graphics → Load Project…</span></li>
+        <li><strong>Plot</strong><span>Graphics → Plot stereo project</span></li>
+        <li><strong>Map</strong><span>Graphics → Plot VGP Project…</span></li>
+        <li><strong>Retouch</strong><span>Edit symbol/color/info by hand in the project file, reload</span></li>
+      </ol>
+      <div class="callout">
+        <strong>No keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, every command here is menu-only — there is no <code>Cmd+…</code> binding to learn.
+      </div>
+    </section>
+
+    <!-- ========================= DATA ========================= -->
+    <section class="menu" id="data">
+      <h2>Data <span class="menu-tag">directions, means, great circles</span></h2>
+      <p class="menu-desc">Build the three working lists (directions / means / great circles) that everything else — Graphics, Statistics — plots or tests.</p>
+
+      <div class="item">
+        <div class="label">File [D-I]...</div>
+        <div class="desc">Loads dec/inc pairs from a file into <strong>directions</strong>. Prompts for a path (between consecutive points, for the connecting arc drawn on the stereonet) and a symbol, applied to every point loaded this way.</div>
+      </div>
+      <div class="item">
+        <div class="label">File [D-I_TC]...</div>
+        <div class="desc">Same as above, but the file's columns are (dec, inc, strike, dip) — the tilt correction is applied <strong>before</strong> the direction is stored, so what ends up in <strong>directions</strong> is already tilt-corrected.</div>
+      </div>
+      <div class="item">
+        <div class="label">File [D-I-a95]...</div>
+        <div class="desc">Loads dec/inc/α95 rows into <strong>means</strong> — each drawn with its own confidence cone.</div>
+      </div>
+      <div class="item">
+        <div class="label">File [D-I-a95_TC]...</div>
+        <div class="desc">Same as <strong>File [D-I-a95]...</strong>, with a tilt correction (strike/dip columns) applied before storing.</div>
+      </div>
+      <div class="item">
+        <div class="label">File [great circle]...</div>
+        <div class="desc">Loads great-circle poles (glon, glat) into <strong>great circles</strong>, with an optional sector (ad1, ai1, ad2, ai2) restricting the drawn arc — otherwise the full circle is drawn.</div>
+      </div>
+      <div class="item">
+        <div class="label">Manual [D-I]...</div>
+        <div class="desc">Types dec/inc pairs in one at a time (loop, Escape to stop), appended to <strong>directions</strong>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Manual [D-I-a95]...</div>
+        <div class="desc">Types dec/inc/α95 rows in one at a time, appended to <strong>means</strong>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Manual [great circle]...</div>
+        <div class="desc">Types great-circle poles in one at a time, appended to <strong>great circles</strong>.</div>
+      </div>
+      <div class="item">
+        <div class="label">List-data</div>
+        <div class="desc">Lists everything currently in all three working lists — directions, means, great circles — with their index numbers, needed by the Delete commands below.</div>
+      </div>
+      <div class="item">
+        <div class="label">Delete D-I line...</div>
+        <div class="desc">Removes one entry from <strong>directions</strong> by its list number.</div>
+      </div>
+      <div class="item">
+        <div class="label">Delete D-I-a95 line...</div>
+        <div class="desc">Removes one entry from <strong>means</strong> by its list number.</div>
+      </div>
+      <div class="item">
+        <div class="label">Delete GC line...</div>
+        <div class="desc">Removes one entry from <strong>great circles</strong> by its list number.</div>
+      </div>
+      <div class="item">
+        <div class="label">Initialize...</div>
+        <div class="desc">Clears one or more of the three working lists, after confirmation.</div>
+      </div>
+      <div class="item">
+        <div class="label">Help Data (file headers)</div>
+        <div class="desc">Displays the accepted file layouts for each Load command above — column order, and the self-describing header names each reader recognizes.</div>
+      </div>
+    </section>
+
+    <!-- ========================= GRAPHICS ========================= -->
+    <section class="menu" id="graphics">
+      <h2>Graphics <span class="menu-tag">plots, projects, VGP maps, export</span></h2>
+      <p class="menu-desc">Everything that draws something — the native stereonet, the Project/VGP-Project systems, projection settings, and SVG export — gathered into one menu (originally split across "Command" and "Projection").</p>
+
+      <div class="item">
+        <div class="label">Plot stereo</div>
+        <div class="desc">Draws the stereonet frame plus the current <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists, in the canvas built into the window. This is the everyday plot command.</div>
+      </div>
+      <div class="item">
+        <div class="label">Plot stereo project</div>
+        <div class="desc">Draws whatever is currently loaded in the <strong>Project</strong> system (<code>self.project_entries</code> — see the <a href="#project">Project</a> menu) instead of the plain directions/means/great-circles lists: each entry keeps its own symbol, color and size, and consecutive same-layer directions are connected by great-circle arcs.</div>
+      </div>
+      <div class="item">
+        <div class="label">Plot VGPs on Map</div>
+        <div class="desc">Plots the current <strong>directions</strong> list on an orthographic world map (via PmagPy's <code>ipmag.make_orthographic_map</code>/<code>plot_vgp</code>) — dec/inc are read directly as VGP longitude/latitude, one shared marker color/shape for every point. Prompts for the map's center latitude/longitude.</div>
+      </div>
+      <div class="item">
+        <div class="label">Plot VGP Project...</div>
+        <div class="desc">Plots <code>self.project_vgp_entries</code> — the VGP block of whatever was last opened via <strong>Load Project...</strong> — on the same kind of world map, but with each VGP's <strong>own</strong> symbol/color, and its dp/dm confidence oval drawn around it whenever the underlying project file also recorded the sampling site's own lat/lon (see <a href="#sp-vgp">VGP block</a> below); otherwise a plain circle of radius p95 is drawn instead. Requires having loaded a project with a VGP block first — it does not prompt for its own file.</div>
+      </div>
+      <div class="item">
+        <div class="label">Clear Screen</div>
+        <div class="desc">Clears the plot canvas.</div>
+      </div>
+      <div class="item">
+        <div class="label">Graph title...</div>
+        <div class="desc">Sets a title shown above the next <strong>Plot stereo</strong>/<strong>Plot stereo project</strong> plot.</div>
+      </div>
+      <div class="item">
+        <div class="label">Stereographic (Wulff)</div>
+        <div class="desc">Equal-angle projection.</div>
+      </div>
+      <div class="item">
+        <div class="label">Equal area (Schmidt)</div>
+        <div class="desc">Equal-area (Lambert azimuthal) projection — the default, and the one almost always used for paleomagnetic directions since it doesn't visually distort point density.</div>
+      </div>
+      <div class="item">
+        <div class="label">Pole of projection...</div>
+        <div class="desc">Sets the latitude/longitude the stereonet is centered on. <code>la=±90</code> gives the usual polar (equatorial-net) view; any other value tilts the whole net to view around an oblique pole.</div>
+      </div>
+      <div class="item">
+        <div class="label">Diameter...</div>
+        <div class="desc">Sets the stereonet's drawn diameter, in centimeters.</div>
+      </div>
+      <div class="item">
+        <div class="label">Symbol size & color...</div>
+        <div class="desc">Sets the default symbol size (cm) used for newly loaded directions/means/great circles. Symbol <em>shape</em> follows the single character typed at load time (<code>c</code>/<code>t</code>/<code>e</code>/<code>l</code>/<code>s</code> — circle/triangle/star/diamond/square) rather than a separate global setting; color on the native stereonet follows open-vs-filled by hemisphere, not a chosen color (that per-entry color control is specific to the Project system — see <strong>Help Project</strong> below).</div>
+      </div>
+      <div class="item">
+        <div class="label">Export SVG...</div>
+        <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the on-screen Figure, no separate export code needed.</div>
+      </div>
+    </section>
+
+    <!-- ========================= STATISTICS ========================= -->
+    <section class="menu" id="statistics">
+      <h2>Statistics <span class="menu-tag">Fisher family & structural tests</span></h2>
+      <p class="menu-desc">Directional statistics on the current <strong>directions</strong>/<strong>great circles</strong> lists — mostly native ports of the original Fortran's own routines (<code>stereo_stats.py</code>), independent of the PmagPy-backed tests under <strong>PmagPy-tools</strong>.</p>
+
+      <div class="item">
+        <div class="label">Fisher Statistics...</div>
+        <div class="desc">Fisher (1953) mean of the current directions (≥2 needed), with an optional angular cutoff to drop points too far from the mean before finalizing it. The resulting mean is appended to <strong>means</strong>. Port of <code>ANGU</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fisher Dir+GC...</div>
+        <div class="desc">Combined Fisher mean from directions <em>and</em> great circles together (McFadden &amp; McElhinny 1988) — needs at least 3 entries between the two lists, with optional sector weighting on the great circles and a manual starting direction if no plain directions are loaded yet. Port of <code>FISHGC</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fisher recursive...</div>
+        <div class="desc">Like <strong>Fisher Statistics</strong>, but the outlier cutoff (default 20°, prompted) is applied recursively, re-trimming and re-computing the mean each pass, needs ≥3 directions. Port of <code>angurecur</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">St Dev dipole...</div>
+        <div class="desc">Angular standard deviation about a user-supplied reference direction (default: the geographic axial dipole, dec=0/inc=90) rather than about the data's own Fisher mean. Port of <code>STDDIP</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fisher Strati</div>
+        <div class="desc">Needs ≥3 directions. Rotates each direction (declination +90°) and replaces the <strong>great circles</strong> list with the resulting poles — a direct port of <code>STRATI</code>, side effect included (the original Fortran overwrites its own great-circle array the same way).</div>
+      </div>
+      <div class="item">
+        <div class="label">progressive Fold test...</div>
+        <div class="desc">Loads its own site-by-site data file (site, dec, inc, azimuth, dip — site column optional) independent of whatever is already loaded, and replaces <strong>directions</strong> with the set of directions unfolded at the percentage of tilt correction that maximizes clustering. Port of <code>FOLDTEST</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Mean Inclination only</div>
+        <div class="desc">Needs ≥2 directions. McFadden &amp; Reid (1982) inclination-only estimator: reports the arithmetic mean, the Arason-biased mean, the McFadden-unbiased mean, a precision parameter and α95. A native port (<code>stereo_stats.mean_inclination_native</code>), distinct from the PmagPy-backed <strong>Mean Inclination</strong> under PmagPy-tools (same statistical method, independent implementation).</div>
+      </div>
+      <div class="item">
+        <div class="label">smallcircles Intersect</div>
+        <div class="desc">Computes small-circle intersections from the first two or three entries currently in <strong>means</strong> — a limitation inherited directly from the original Fortran (<code>intersect2</code>), which only ever reads the first few mean directions rather than letting you pick which ones. Appends the intersection point(s) found to <strong>directions</strong>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Reversal angle...</div>
+        <div class="desc">Compares the current directions against a user-given expected normal-polarity direction and reports the angle each one departs by. Port of <code>reversalangle</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">difference angle...</div>
+        <div class="desc">Reads a file of direction pairs (D0, I0, D1, I1) and reports the angle between each pair, one line per row. Port of <code>difangle</code>.</div>
+      </div>
+    </section>
+
+    <!-- ========================= PROJECT ========================= -->
+    <section class="menu" id="project">
+      <h2>Project <span class="menu-tag">multi-layer symbol/color system</span></h2>
+      <p class="menu-desc">A separate in-memory list, <code>self.project_entries</code> — directions, means and great circles together, each with its own hand-editable symbol, color and size, grouped into named "layers". Independent of the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists under Data. The plotting commands for this system (<strong>Plot stereo project</strong>, <strong>Plot VGP Project...</strong>) now live under <a href="#graphics">Graphics</a>, alongside the rest of the plotting commands.</p>
+
+      <div class="item">
+        <div class="label">Load Project...</div>
+        <div class="desc">Loads a project file into <code>self.project_entries</code> — and, if the file has a <code>#&nbsp;VGP</code> block (the newer 3-block format written by STARpaleomag_Py, see <a href="#stereoproject">reference</a> below), its VGP entries too, into <code>self.project_vgp_entries</code>, ready for <strong>Graphics&nbsp;→&nbsp;Plot VGP Project...</strong> without loading anything a second time. An older, plain (no <code>#</code> block markers) project file loads exactly as before, with no VGP entries.</div>
+      </div>
+      <div class="item">
+        <div class="label">Export to Project</div>
+        <div class="desc">Builds <code>self.project_entries</code> from whatever is currently in the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists (Data menu) — the reverse direction from <strong>Load Project</strong> — and offers to save the result to a file. A quick way to get an existing plain selection into the Project system's per-entry symbol/color model.</div>
+      </div>
+      <div class="item">
+        <div class="label">List Project</div>
+        <div class="desc">Prints every entry currently in <code>self.project_entries</code>, one line each, in the exact column layout a project file uses — convenient to copy straight into a text file.</div>
+      </div>
+      <div class="item">
+        <div class="label">Init Project</div>
+        <div class="desc">Clears <code>self.project_entries</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fisher Project...</div>
+        <div class="desc">Computes a Fisher mean for each group of <em>consecutive</em> same-layer lines in <code>self.project_entries</code> (not a global group-by-layer — a layer name reappearing later in the file after a different layer starts a separate group), with an optional angular filter. Prints ready-to-paste project-file lines for each mean. Port of <code>fisherproject</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Help Project (colors & symbols)</div>
+        <div class="desc">Displays the project file's column layout, the recognized symbol codes (<code>c</code>/<code>t</code>/<code>e</code>/<code>l</code>/<code>s</code>), and the accepted color formats — an <code>R_G_B</code> triplet (0–255 each) or one of about twenty named colors (<code>red</code>, <code>blue</code>, <code>skyblue</code>…).</div>
+      </div>
+    </section>
+
+    <!-- ========================= PMAG UTILITIES ========================= -->
+    <section class="menu" id="pu">
+      <h2>Pmag Utilities <span class="menu-tag">VGP, rotation, correction toolbox</span></h2>
+      <p class="menu-desc">A large collection of mostly-independent, mostly-interactive calculators (native ports of <code>pmagoutils.f</code>, via <code>stereo_pmagutils.py</code>), organized as submenus matching the original Fortran's own groupings. Each one is self-contained — none of them read or write the Data/Project working lists, with the few exceptions noted below.</p>
+
+      <h3 class="group">VGP conversions</h3>
+      <div class="item">
+        <div class="label">Direction to VGP...</div>
+        <div class="desc">Given a site lat/lon, converts typed dec/inc (optionally with α95) into a VGP lat/lon (and dm/dp, if α95 given), one at a time in a loop.</div>
+      </div>
+      <div class="item">
+        <div class="label">File: Direction to VGP...</div>
+        <div class="desc">Batch version: reads a file of site lat/lon/dec/inc(/α95) rows (header-aware, or degree/minute/second coordinate columns) and converts every row.</div>
+      </div>
+      <div class="item">
+        <div class="label">VGP to direction...</div>
+        <div class="desc">The inverse of <strong>Direction to VGP</strong>: given a site lat/lon, converts a typed VGP lat/lon(/α95) back into the expected dec/inc(/dD,dI) at that site.</div>
+      </div>
+      <div class="item">
+        <div class="label">File: VGP to direction...</div>
+        <div class="desc">Batch version of the above, with a prompt for whether the file gives VGP lat-then-lon or lon-then-lat when no header names the columns.</div>
+      </div>
+
+      <h3 class="group">Rotation/flattening tests</h3>
+      <div class="item">
+        <div class="label">Rotation obs=DI  Pole Ref...</div>
+        <div class="desc">Given an observed direction (dec/inc/α95), a site lat/lon, and a reference paleopole (lat/lon/p95), computes the direction expected from that pole, plus the rotation and flattening (with uncertainties) needed to reconcile the observed direction with it.</div>
+      </div>
+      <div class="item">
+        <div class="label">Rotation obs=DI  DI Ref...</div>
+        <div class="desc">Same rotation/flattening calculation, but between two directly-given directions (each its own dec/inc/α95) rather than a direction and a pole.</div>
+      </div>
+      <div class="item">
+        <div class="label">Rotation obs=Pole Pole Ref...</div>
+        <div class="desc">Rotation and pole displacement between an observed pole and a reference pole (each lat/lon/A95), evaluated at a given site.</div>
+      </div>
+
+      <h3 class="group">Paleolatitude</h3>
+      <div class="item">
+        <div class="label">Paleolatitude at one site (file)...</div>
+        <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file.</div>
+      </div>
+      <div class="item">
+        <div class="label">Inclination a95 to Plat and err...</div>
+        <div class="desc">Converts a single inclination + α95 directly to a paleolatitude with min/max error bounds, without needing a full APWP file.</div>
+      </div>
+
+      <h3 class="group">GMT rotation export</h3>
+      <div class="item">
+        <div class="label">Rotation vers GMT plot...</div>
+        <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script.</div>
+      </div>
+      <div class="item">
+        <div class="label">Aide Rotation</div>
+        <div class="desc">Static help text describing the file formats <strong>Rotation vers GMT plot</strong> expects.</div>
+      </div>
+
+      <h3 class="group">Core/bedding corrections</h3>
+      <div class="item">
+        <div class="label">Core correction...</div>
+        <div class="desc">Borehole/drill-core orientation correction: given the corer's own dip and strike, corrects each typed dec/inc for it.</div>
+      </div>
+      <div class="item">
+        <div class="label">Bedding correction...</div>
+        <div class="desc">Standard tilt (bedding) correction, given either strike-and-dip or dip-direction-and-dip (auto-detected/converted), applied to typed dec/inc pairs.</div>
+      </div>
+      <div class="item">
+        <div class="label">inverseBedding cor...</div>
+        <div class="desc">The inverse problem: given both the in-situ and the already tilt-corrected D/I for the same direction (typed, or a file of <code>d1 i1 d2 i2</code> rows), solves for the strike/dip that produces that exact correction.</div>
+      </div>
+
+      <h3 class="group">Fold plunge</h3>
+      <div class="item">
+        <div class="label">Fold plunge...</div>
+        <div class="desc">Corrects a direction for a plunging fold axis, given the strike/dip and the fold's own azimuth/dip — either a single first-order correction, or a progressive/iterative one.</div>
+      </div>
+      <div class="item">
+        <div class="label">File Fold plunge...</div>
+        <div class="desc">Batch version: reads a file of (site, dec, inc, α95, strike-or-dipdir, dip, fold azimuth, fold dip) rows and replaces <strong>directions</strong> with the corrected results.</div>
+      </div>
+
+      <h3 class="group">Euler rotation</h3>
+      <div class="item">
+        <div class="label">DI Polar rotation...</div>
+        <div class="desc">Rotates a typed dec/inc about a given Euler pole (lon/lat/angle), at a given site, one at a time in a loop.</div>
+      </div>
+      <div class="item">
+        <div class="label">VGP Plate rotation...</div>
+        <div class="desc">Batch version: rotates VGPs from a file, each row carrying its own Euler pole.</div>
+      </div>
+
+      <h3 class="group">Paleointensity</h3>
+      <div class="item">
+        <div class="label">mean paleointensity...</div>
+        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count) from a file or typed one at a time.</div>
+      </div>
+      <div class="item">
+        <div class="label">VDM and VADM...</div>
+        <div class="desc">Converts paleointensity + site latitude + inclination into the virtual dipole moment and virtual axial dipole moment.</div>
+      </div>
+      <div class="item">
+        <div class="label">VDM to Intensity...</div>
+        <div class="desc">The inverse of <strong>VDM and VADM</strong>: relocates a given VDM to the equivalent field intensity at a chosen latitude/inclination.</div>
+      </div>
+      <div class="item">
+        <div class="label">Relocate D I F...</div>
+        <div class="desc">Batch file relocation of paired direction+paleointensity data (site, age, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing.</div>
+      </div>
+
+      <h3 class="group">IGRF</h3>
+      <div class="item">
+        <div class="label">valeur CMT IGRF...</div>
+        <div class="desc">Computes the IGRF field (D, I, F, H, N, E, Z components) at a given lat/lon/year/altitude, via the <code>ppigrf</code> package. Reports clearly if <code>ppigrf</code> isn't installed rather than failing silently.</div>
+      </div>
+      <div class="item">
+        <div class="label">Help calcul IGRF</div>
+        <div class="desc">Static help text for the IGRF calculator above.</div>
+      </div>
+
+      <h3 class="group">Other</h3>
+      <div class="item">
+        <div class="label">conversion units...</div>
+        <div class="desc">Menu-driven unit converter for common magnetic units: Am²↔emu, Am²/kg↔emu/g, A/m↔emu/cc, Tesla/µTesla↔A/m.</div>
+      </div>
+      <div class="item">
+        <div class="label">test overprint...</div>
+        <div class="desc">Given an overprint direction plus the in-situ normal- and reverse-polarity directions it's contaminating, estimates the percentage of overprint and returns the corrected characteristic directions.</div>
+      </div>
+      <div class="item">
+        <div class="label">test flattening...</div>
+        <div class="desc">Applies the standard inclination-shallowing correction (<code>tan(I<sub>corrected</sub>) = f · tan(I<sub>observed</sub>)</code>) to typed inclinations, one at a time in a loop.</div>
+      </div>
+    </section>
+
+    <!-- ========================= PMAGPY-TOOLS ========================= -->
+    <section class="menu" id="pmagpy">
+      <h2>PmagPy-tools <span class="menu-tag">calls the real PmagPy package</span></h2>
+      <p class="menu-desc">Not a port — the original Fortran routines behind this menu only ever wrote a file and shelled out to a standalone PmagPy script; this menu calls the installed <code>pmagpy</code> package's own functions directly (<code>stereo_pmagpy.py</code>). Bootstrap ellipse is new work: the Fortran's own equivalent routine has its random-number generator disabled in the source (a confirmed bug, not reproduced here), so this uses PmagPy's real bootstrap instead.</p>
+
+      <div class="item">
+        <div class="label">Fisher</div>
+        <div class="desc">Fisher (1953) mean of the current directions via PmagPy's own <code>pmag.fisher_mean</code> — no mode separation (normal/reverse), unlike <strong>Statistics → Fisher Statistics</strong>'s native <code>ANGU</code>-based equivalent.</div>
+      </div>
+      <div class="item">
+        <div class="label">Bootstrap ellipse</div>
+        <div class="desc">Non-parametric (or parametric) bootstrap confidence ellipse on the current directions, fitting a Kent distribution via PmagPy's <code>ipmag.mean_bootstrap_confidence</code>/<code>plot_bootstrap_confidence</code> — needs ≥3 directions; prompts for the number of resamples.</div>
+      </div>
+      <div class="item">
+        <div class="label">Find Elongation</div>
+        <div class="desc">Bootstrap estimate of the elongation/inclination relationship in the current directions, via PmagPy's <code>ipmag.find_ei</code> — used to detect and correct inclination shallowing in a population of directions.</div>
+      </div>
+      <div class="item">
+        <div class="label">Reversal antipodality</div>
+        <div class="desc">Bootstrap reversal test on the current directions (split by polarity), via PmagPy's <code>ipmag.reversal_test_bootstrap</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Test common mean</div>
+        <div class="desc">Bootstrap test of whether two direction sets could share a common true mean, via PmagPy's <code>ipmag.common_mean_bootstrap</code>.</div>
+      </div>
+      <div class="item">
+        <div class="label">Fold Test</div>
+        <div class="desc">Bootstrap fold test (optimal unfolding percentage with confidence bounds) via PmagPy's <code>ipmag.bootstrap_fold_test</code> — distinct from <strong>Statistics → progressive Fold test</strong>'s native, non-bootstrap equivalent.</div>
+      </div>
+      <div class="item">
+        <div class="label">Mean Inclination</div>
+        <div class="desc">McFadden &amp; Reid (1982) inclination-only mean via PmagPy's <code>pmag.doincfish</code> — same method as <strong>Statistics → Mean Inclination only</strong>, independent implementation.</div>
+      </div>
+    </section>
+
+    <!-- ========================= STEREO PROJECT FORMAT ========================= -->
+    <section class="menu" id="stereoproject">
+      <h2>Stereo Project file format <span class="menu-tag">reference</span></h2>
+      <p class="menu-desc">A plain text file, hand-editable in any text editor — the whole point of the Project system is that symbol, color and size are things you set by eye, not compute. Two variants exist: the original <strong>flat</strong> format (one list, positional columns, no header — still read and written exactly as before by <strong>Load/Export to Project</strong>), and the newer <strong>3-block</strong> format written by STARpaleomag_Py's own Stereo_Py export, which groups entries into three self-labeled sections, each with its own column header. <strong>Load Project...</strong> auto-detects which one a file is and reads it accordingly.</p>
+
+      <h3 class="group" id="sp-directions"># individual directions</h3>
+      <p style="color:var(--ink-soft); max-width:68ch;">One row per specimen-level result — a line (<code>type=d</code>, a point) or a plane (<code>type=g</code>, a real great circle, not just its pole plotted as a point). <code>layer</code> groups rows by site, so <strong>Fisher Project</strong> can recompute a site mean directly from them.</p>
+      <div class="table-wrap">
+        <table class="maptable">
+          <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>layer, id</td><td>site (or other grouping name), specimen id</td></tr>
+            <tr><td>type</td><td><code>d</code> direction, or <code>g</code> great circle (dec/inc = pole)</td></tr>
+            <tr><td>dec, inc</td><td>direction, or the plane's pole for <code>type=g</code></td></tr>
+            <tr><td>alpha95</td><td>unused for <code>d</code>; must be non-zero for <code>g</code> to load correctly — see callout below</td></tr>
+            <tr><td>tilt_correction</td><td>0–100, MagIC-style (0 = in-situ, 100 = full tilt correction) — the orientation this row's dec/inc was computed in</td></tr>
+            <tr><td>symbol, color, size</td><td>per-row plotting style — symbol code (<code>c</code>/<code>t</code>/<code>e</code>/<code>l</code>/<code>s</code>), a named color or <code>R_G_B</code> triplet, size in cm</td></tr>
+            <tr><td>info</td><td>free text, left blank by the exporter — yours to fill in by hand</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <strong>alpha95==0.0 quirk.</strong> Inherited from the original Fortran <code>loadproject</code>: a row whose <code>alpha95</code> reads exactly 0.0 is forced to <code>type=d</code> on load, whatever the file actually says — a plane written with <code>alpha95=0</code> would silently lose its great circle and plot as a point instead. STARpaleomag_Py's exporter avoids this by writing the fit's own MAD there for a plane row rather than 0.0.
+      </div>
+
+      <h3 class="group" id="sp-means"># mean directions</h3>
+      <p style="color:var(--ink-soft); max-width:68ch;">One row per site mean, always <code>type=m</code> (drawn with its α95 confidence cone) — same columns as the directions block, minus <code>type</code>, plus <code>n</code> (specimen count).</p>
+
+      <h3 class="group" id="sp-vgp"># VGP</h3>
+      <p style="color:var(--ink-soft); max-width:68ch;">One row per site pole — a geographic point (paleo-longitude/latitude), plotted on a world map via <strong>Graphics → Plot VGP Project...</strong>, never on the stereonet (a VGP isn't a local direction).</p>
+      <div class="table-wrap">
+        <table class="maptable">
+          <thead><tr><th>Column</th><th>Meaning</th></tr></thead>
+          <tbody>
+            <tr><td>site, id</td><td>site name</td></tr>
+            <tr><td>paleolon, paleolat</td><td>VGP longitude/latitude</td></tr>
+            <tr><td>dp, dm</td><td>confidence oval semi-axes (degrees)</td></tr>
+            <tr><td>n, a95</td><td>specimen count, site α95</td></tr>
+            <tr><td>site_lat, site_lon</td><td>the <em>sampling site's</em> own coordinates — needed to orient the true dp/dm ellipse along the site→pole meridian (Butler 1992, fig. A.2); without them, a plain circle of radius p95=(dp+dm)/2 is drawn instead</td></tr>
+            <tr><td>tilt_correction, symbol, color, size, info</td><td>same meaning as the directions/means blocks above</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="callout">
+        <strong>Loading a VGP file on its own.</strong> An older, standalone VGP file (no <code>#</code> block markers, just a header row with <code>dec</code>/<code>inc</code> columns holding VGP lon/lat) still loads correctly — <strong>Load Project...</strong> falls back to reading the whole file as the VGP block when no block markers are found and the header doesn't look like a flat stereonet project either.
+      </div>
+    </section>
+
+  </main>
+
+  <footer>
+    StereoUtils_Py — Python port of Stereo_V19 (paleomagnetism laboratory, Géosciences Rennes), sibling application to STARpaleomag_Py and AMS_Py.
+  </footer>
+
+</div>
+</body>
+</html>

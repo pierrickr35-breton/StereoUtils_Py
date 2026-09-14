@@ -363,6 +363,15 @@ class VgpProjectEntry(NamedTuple):
     size: float
     nb: int
     a95: float
+    # Position du SITE (PAS du pole) - demande explicite utilisateur ("is
+    # it possible to plot the VGP with their dp,dm ellipse") : necessaire
+    # pour orienter la VRAIE ellipse dp/dm (asymetrique le long du
+    # meridien site->pole, voir ipmag.plot_pole_dp_dm et Butler 1992 fig.
+    # A.2) - sans elle (0.0/0.0, valeur par defaut ci-dessous - JAMAIS un
+    # vrai site) seul le repli en simple cercle p95 reste possible, voir
+    # stereo_pmagpy.plot_vgp_project.
+    site_lat: float = 0.0
+    site_lon: float = 0.0
 
 
 def _parse_vgp_project_lines(lines: Sequence[str]) -> List[VgpProjectEntry]:
@@ -378,7 +387,8 @@ def _parse_vgp_project_lines(lines: Sequence[str]) -> List[VgpProjectEntry]:
     out: List[VgpProjectEntry] = []
     data_lines, idx = split_header(
         lines, "dec", "inc", "paleolon", "paleolat", "site", "id",
-        "nb", "n", "a95", "dp", "dm", "p95", "symbol", "rgb", "size")
+        "nb", "n", "a95", "dp", "dm", "p95", "symbol", "rgb", "size",
+        "site_lat", "site_lon")
     i_lon = idx.get("paleolon", idx.get("dec"))
     i_lat = idx.get("paleolat", idx.get("inc"))
     if i_lon is None or i_lat is None:
@@ -430,7 +440,13 @@ def _parse_vgp_project_lines(lines: Sequence[str]) -> List[VgpProjectEntry]:
         site = field("site") or field("id") or f"vgp{i + 1}"
         symbol = field("symbol", "c") or "c"
         rgb = field("rgb", "0_0_0") or "0_0_0"
-        out.append(VgpProjectEntry(site, paleolon, paleolat, dp, dm, p95, symbol, rgb, size, nb, a95))
+        try:
+            site_lat = float(field("site_lat", "0"))
+            site_lon = float(field("site_lon", "0"))
+        except ValueError:
+            site_lat = site_lon = 0.0
+        out.append(VgpProjectEntry(
+            site, paleolon, paleolat, dp, dm, p95, symbol, rgb, size, nb, a95, site_lat, site_lon))
     return out
 
 

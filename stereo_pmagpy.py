@@ -211,25 +211,29 @@ def plot_vgp_project(entries, view_lat: float = 0.0, view_lon: float = 0.0):
     update the project in Stereo to manage the VGP plot") : `entries`
     (stereo_selection.VgpProjectEntry, via read_vgp_project_file) porte
     DEJA symbole/couleur/taille par VGP (ecrits par STARpaleomag_Py/
-    export_stereo.export_poles_to_stereo) - contrairement a
+    export_stereo.export_stereo_project) - contrairement a
     `plot_vgps_on_map` (une seule couleur/un seul marqueur pour TOUS les
     points, `self.directions` sans cette info), chaque VGP est ici trace
-    INDIVIDUELLEMENT avec ses propres reglages (une boucle + un appel
-    `ipmag.plot_vgp` par entree, plutot qu'un seul appel groupe sur
-    `di_block`).
+    INDIVIDUELLEMENT avec ses propres reglages.
 
-    Ovale de confiance : APPROXIME par un CERCLE de rayon `p95` (moyenne
-    dp/dm, deja calculee cote STARpaleomag_Py - voir
-    calcul.dp_dm_from_a95), PAS la vraie ellipse dp/dm (asymetrique
-    nord-sud/est-ouest) - simplification deliberee, PAS un oubli : c'est
-    deja la convention utilisee ailleurs dans ce meme projet pour les VGP
-    d'un APWP (voir app.py, colonne "p95" de `read_apwp_file` / le menu
-    correspondant), et `pmag.circ` (deja utilise/verifie par PmagPy,
-    aucune nouvelle formule geometrique introduite ici) ne sait tracer
-    qu'un cercle, pas une ellipse orientee - une vraie ellipse dp/dm
-    demanderait de connaitre l'azimut site->VGP (angle de declinaison
-    paleomagnetique), non reconstruit ici. `dp`/`dm` individuels restent
-    neanmoins dans le fichier/l'entree pour un usage futur plus precis."""
+    Ovale de confiance - demande explicite utilisateur ("is it possible to
+    plot the VGP with their dp,dm ellipse") : la VRAIE ellipse dp/dm
+    (asymetrique, orientee le long du meridien site->pole - voir Butler
+    1992 fig. A.2) via `ipmag.plot_pole_dp_dm` DES QUE la position du SITE
+    est connue (`e.site_lat`/`e.site_lon` non nuls - voir
+    STARpaleomag_Py/export_stereo.export_stereo_project, colonnes
+    site_lat/site_lon du bloc "# VGP") : c'est cette meme fonction PmagPy
+    qui calcule l'angle de rotation correct (loi des cosinus spherique sur
+    le triangle site/pole nord/paleopole), aucune nouvelle geometrie
+    introduite ici. `plot_pole_dp_dm` trace AUSSI le site lui-meme (marqueur
+    carre, meme couleur que le pole) - c'est la geometrie meme qui explique
+    l'orientation de l'ellipse, pas une donnee en trop.
+
+    Repli en simple CERCLE de rayon `p95` (moyenne dp/dm, voir
+    calcul.dp_dm_from_a95) via `pmag.circ` quand le site n'est PAS connu
+    (fichier plus ancien sans site_lat/site_lon, ou VGP sans site unique) -
+    convention deja utilisee ailleurs dans ce meme projet pour les VGP
+    d'un APWP (voir app.py, colonne "p95" de `read_apwp_file`)."""
     plt.close("all")
     ax = ipmag.make_orthographic_map(central_longitude=view_lon, central_latitude=view_lat)
     for e in entries:
@@ -242,14 +246,26 @@ def plot_vgp_project(entries, view_lat: float = 0.0, view_lon: float = 0.0):
         # (Project) sur EXACTEMENT les memes chaines de couleur.
         r, g, b = decode_color(e.rgb)
         color = (r / 255.0, g / 255.0, b / 255.0)
-        ipmag.plot_vgp(
-            ax, di_block=[[e.paleolon, e.paleolat]],
-            color=color, marker=marker, markersize=max(e.size, 0.05) * 60,
-            label=e.site,
-        )
-        if e.p95 > 0.0:
-            lons, lats = pmag.circ(e.paleolon, e.paleolat, e.p95)
-            ax.plot(lons, lats, color=color, linewidth=1, transform=ccrs.Geodetic())
+        markersize = max(e.size, 0.05) * 60
+        has_site = e.site_lat != 0.0 or e.site_lon != 0.0
+        if has_site and (e.dp > 0.0 or e.dm > 0.0):
+            ipmag.plot_pole_dp_dm(
+                ax, e.paleolon, e.paleolat, e.site_lon, e.site_lat, e.dp, e.dm,
+                pole_label=e.site, site_label=f"{e.site} (site)",
+                pole_color=color, pole_edgecolor=color, pole_marker=marker,
+                site_color=color, site_edgecolor=color, site_marker="s",
+                markersize=markersize, legend=False,
+            )
+        else:
+            ipmag.plot_vgp(
+                ax, di_block=[[e.paleolon, e.paleolat]],
+                color=color, marker=marker, markersize=markersize, label=e.site,
+            )
+            if e.p95 > 0.0:
+                lons, lats = pmag.circ(e.paleolon, e.paleolat, e.p95)
+                ax.plot(lons, lats, color=color, linewidth=1, transform=ccrs.Geodetic())
+    if entries:
+        plt.legend(loc=2)
     save_folder = tempfile.mkdtemp(prefix="stereoutils_")
     path = os.path.join(save_folder, "vgp_project_map.png")
     plt.savefig(path, dpi=120)
