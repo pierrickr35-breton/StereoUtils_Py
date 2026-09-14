@@ -55,7 +55,7 @@ proprietaires non documentables sans exemple) :
   implementations calculent la meme chose)."""
 
 import math
-from typing import List, Optional, Sequence, Tuple
+from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 from stereo_geometry import _angle, corpen, corfor, polere
 from stereo_selection import read_text_lines, split_header
@@ -680,74 +680,103 @@ def relocate(vdm_1e22: float, site_lat: float, inc: float) -> Tuple[float, float
 # Colonnes .pmagint (STARpaleomag_Py/AMS_Py, meme fichier partage - voir
 # STARpaleomag_Py/paleointensity._PMAGINT_HEADER) - reproduites ICI en dur
 # (pas d'import inter-projet, meme discipline que site_map.py pour .prmag :
-# chaque appli garde son propre lecteur minimal autonome). Seules les
-# colonnes reellement utilisees par read_meanpal_file_triples sont
-# nommees ; les autres n'ont pas besoin d'etre listees, l'index est
-# retrouve dynamiquement depuis la ligne d'entete du fichier.
+# chaque appli garde son propre lecteur minimal autonome).
 _PMAGINT_MARKER_COL = "specimen"
 
 
-def read_meanpal_file_triples(path: str) -> List[Tuple[float, float, float]]:
-    """Lit le fichier choisi pour MEANPAL mode "DONNES DANS UN FICHIER (1)" -
+class MeanpalRow(NamedTuple):
+    """Une ligne de fichier MEANPAL deja resolue - `label` est le texte
+    affiche dans la liste numerotee (voir read_meanpal_file), `h0/h1/h2`
+    correspondent exactement a RFI0/RFIcorani/RFIcorcool du Fortran
+    (raw/anisotropy-corrected/cooling-corrected), `q`/`n` a Q/N (poids et
+    degres de liberte, MEMES valeurs pour les 3 series)."""
+    label: str
+    h0: float
+    h1: float
+    h2: float
+    q: float
+    n: float
+
+
+def _read_meanpal_pmagint_rows(lines: List[str], header: List[str]) -> List[MeanpalRow]:
+    """CASE(2) "FICHIER STARMAC" du Fortran (pmagoutils.f:612-707) : lit un
+    fichier .pmagint (descendant direct du format STARMAC lu la, meme
+    ordre de colonnes - specimen,t1,t2,f1,f2,N,f,g,q,mad,dang,pct_crm,
+    Hlab,b,sb,sb_over_b,ccr,H,fcor,Hcorani,fcorCool,HcorCool,...) plutot
+    que le format 3-colonnes simple de CASE(1)/(3). h1 = Hcorani si
+    presente ("n.d" en son absence), SINON repli sur h0 (`if(corani==0.0)
+    rficorani=rfi0`) ; h2 = HcorCool si presente, SINON repli sur h1 DEJA
+    eventuellement substitue (`if(corcool==0.0) rficorcool=rficorani`) -
+    MEME cascade a 2 etages que le Fortran, pas juste "le plus corrige
+    disponible" (contrairement a l'ancienne version de ce module, qui ne
+    gardait qu'UNE seule valeur H par ligne)."""
+    idx = {name.strip(): i for i, name in enumerate(header)}
+
+    def col(parts: List[str], name: str) -> Optional[float]:
+        i = idx.get(name)
+        if i is None or i >= len(parts):
+            return None
+        v = parts[i].strip()
+        if v in ("", "n.d"):
+            return None
+        try:
+            return float(v)
+        except ValueError:
+            return None
+
+    rows = []
+    for ln in lines:
+        parts = ln.split("\t")
+        h0, q, n = col(parts, "H"), col(parts, "q"), col(parts, "N")
+        if h0 is None or q is None or n is None:
+            continue
+        h1 = col(parts, "Hcorani")
+        if h1 is None:
+            h1 = h0
+        h2 = col(parts, "HcorCool")
+        if h2 is None:
+            h2 = h1
+        specimen = parts[idx.get("specimen", 0)].strip() if parts else ""
+        label = f"{specimen}   H={h0:.1f}  ANI={h1:.1f}  cool={h2:.1f}  Q={q:.1f}  N={n:g}"
+        rows.append(MeanpalRow(label, h0, h1, h2, q, n))
+    return rows
+
+
+def read_meanpal_file(path: str) -> Tuple[str, List]:
+    """Lit le fichier choisi pour MEANPAL mode "DATA FROM A FILE (1)" -
     demande explicite utilisateur ("dans le pmagint, peut on inserer des
     lignes de commentaires manuellement... ce fichier devra aussi etre lu
-    dans Stereo_utils... est-ce possible de verifier la compatibilite ?").
-    Verification faite : PAS compatible tel quel avec l'ancien format -
-    l'ancien lecteur (3 premieres colonnes = F Q N, aucun en-tete attendu)
-    prenait les colonnes 0/1/2 sans condition ; sur un vrai .pmagint la
-    colonne 0 est l'id specimen (texte) et F/Q/N sont ailleurs (H/Hcorani/
-    HcorCool en position 17/19/21, q en 8, N en 5) - chaque ligne aurait
-    silencieusement echoue au float() et ete ignoree.
+    dans Stereo_utils... est-ce possible de verifier la compatibilite ?"
+    puis, apres un premier essai incomplet, "l'utilisateur doit choisir
+    les donnees a moyenner... Voir source en Fortran").
 
-    Detecte maintenant les DEUX formats :
-    - .pmagint natif (tabule, ligne d'entete commencant par "specimen") :
-      une ligne = une interpretation/specimen = une "experience" au sens
-      de meanpal_weighted ; F = le paleointensite le PLUS corrige
-      disponible (HcorCool > Hcorani > H - MEME ordre de precedence que
-      STARpaleomag_Py/magic_export.paleointensity_magic_fields/h_final,
-      pour rester coherent avec ce qui serait exporte vers MagIC), Q = q,
-      N = N (nombre de points Arai utilises dans l'interpretation).
-    - ancien format simple (3 colonnes F Q N par ligne, sans en-tete).
+    Detecte le format et retourne (kind, data) :
+    - ("pmagint", List[MeanpalRow]) pour un .pmagint natif (tabule,
+      ligne d'entete commencant par "specimen") - c'est le format
+      CASE(2) "FICHIER STARMAC" du Fortran (pmagoutils.f), PAS CASE(1) :
+      la-bas, ce mode affiche la liste NUMEROTEE des lignes lues et
+      demande explicitement "selectionner les lignes de i a j pour le
+      calcul de la moyenne" AVANT tout calcul - il ne moyenne jamais tout
+      le fichier d'un coup. Voir meanpal_table pour le calcul sur la
+      plage choisie.
+    - ("simple", List[Tuple[float,float,float]]) pour l'ancien format 3
+      colonnes (F Q N par ligne, sans en-tete) - c'est CASE(1) du
+      Fortran, qui n'a PAS de selection : tout le fichier est moyenne
+      directement (comportement INCHANGE ici).
 
     Dans les DEUX cas, les lignes vides et les lignes de commentaire
-    ("#...", y compris ajoutees manuellement a la main dans le fichier)
-    sont ignorees - .pmagint accepte deja cette convention cote
-    STARpaleomag_Py/AMS_Py (paleointensity.read_pmagint)."""
+    ("#...", y compris ajoutees a la main) sont ignorees - .pmagint
+    accepte deja cette convention cote STARpaleomag_Py/AMS_Py
+    (paleointensity.read_pmagint)."""
     with open(path, "r", encoding="iso-8859-1", errors="replace") as f:
         raw_lines = f.read().splitlines()
     lines = [ln for ln in raw_lines if ln.strip() and not ln.strip().startswith("#")]
     if not lines:
-        return []
+        return "simple", []
 
     header = lines[0].split("\t")
     if header[0].strip() == _PMAGINT_MARKER_COL:
-        idx = {name.strip(): i for i, name in enumerate(header)}
-
-        def col(parts: List[str], name: str) -> Optional[float]:
-            i = idx.get(name)
-            if i is None or i >= len(parts):
-                return None
-            v = parts[i].strip()
-            if v in ("", "n.d"):
-                return None
-            try:
-                return float(v)
-            except ValueError:
-                return None
-
-        triples = []
-        for ln in lines[1:]:
-            parts = ln.split("\t")
-            h = col(parts, "HcorCool")
-            if h is None:
-                h = col(parts, "Hcorani")
-            if h is None:
-                h = col(parts, "H")
-            q, n = col(parts, "q"), col(parts, "N")
-            if h is None or q is None or n is None:
-                continue
-            triples.append((h, q, n))
-        return triples
+        return "pmagint", _read_meanpal_pmagint_rows(lines[1:], header)
 
     triples = []
     for ln in lines:
@@ -758,7 +787,72 @@ def read_meanpal_file_triples(path: str) -> List[Tuple[float, float, float]]:
             triples.append((float(parts[0]), float(parts[1]), float(parts[2])))
         except ValueError:
             continue
-    return triples
+    return "simple", triples
+
+
+def _meanpal_series_stats(values: Sequence[float], weights: Sequence[float]) -> dict:
+    """Une "colonne" (0/ANI/cool) de la table MEANPAL (pmagoutils.f:704-
+    761) : MEAN arithmetique, WeightedMEAN (poids `weights` = Q/sqrt(N-2),
+    deja calcules par l'appelant), GeomMEAN (moyenne geometrique, base 10
+    comme le Fortran), SD (ecart-type, N-1 au denominateur), Serr =
+    SD/sqrt(Npt), Serr95 = Serr*1.96."""
+    npt = len(values)
+    mean = sum(values) / npt
+    tot_w = sum(weights)
+    weighted_mean = sum(v * w for v, w in zip(values, weights)) / tot_w if tot_w else None
+    geom_mean = 10 ** (sum(math.log10(v) for v in values) / npt) if all(v > 0 for v in values) else None
+    sd = math.sqrt(sum((v - mean) ** 2 for v in values) / (npt - 1)) if npt > 1 else 0.0
+    serr = sd / math.sqrt(npt)
+    return {"mean": mean, "weighted_mean": weighted_mean, "geom_mean": geom_mean,
+            "sd": sd, "serr": serr, "serr95": serr * 1.96, "npt": npt}
+
+
+def meanpal_table(rows: Sequence[MeanpalRow]) -> Optional[dict]:
+    """Port de la table MEANPAL CASE(2) (pmagoutils.f:703-761) : calcule
+    les 3 series (0=brut, ANI=corrige anisotropie, cool=corrige
+    refroidissement - voir MeanpalRow) sur la plage de lignes DEJA
+    selectionnee par l'utilisateur (voir read_meanpal_file/pu_meanpal),
+    PLUS Q_ARITH/Q_GEOM (moyennes arithmetique/geometrique de Q, communes
+    aux 3 series). Le poids Q/sqrt(N-2) (Prevot et al. 1985) est calcule
+    UNE fois (memes Q/N pour les 3 series) ; une ligne avec N<=2 est
+    exclue du poids/WeightedMEAN (le Fortran, lui, diviserait par
+    sqrt(negatif ou nul) - garde defensive absente du source, deja
+    presente dans meanpal_weighted). None si aucune ligne exploitable."""
+    if not rows:
+        return None
+    weights = []
+    for r in rows:
+        nn = r.n - 2
+        weights.append(r.q / math.sqrt(nn) if nn > 0 else 0.0)
+    if not any(weights):
+        return None
+    series = {
+        "0": _meanpal_series_stats([r.h0 for r in rows], weights),
+        "ANI": _meanpal_series_stats([r.h1 for r in rows], weights),
+        "cool": _meanpal_series_stats([r.h2 for r in rows], weights),
+    }
+    q_vals = [r.q for r in rows]
+    q_arith = sum(q_vals) / len(q_vals)
+    q_geom = 10 ** (sum(math.log10(q) for q in q_vals) / len(q_vals)) if all(q > 0 for q in q_vals) else None
+    return {"series": series, "q_arith": q_arith, "q_geom": q_geom, "npt": len(rows)}
+
+
+def format_meanpal_table(table: dict) -> str:
+    """Rendu texte de meanpal_table - memes colonnes/ordre que le WRITE
+    Fortran (pmagoutils.f:762-770) : MEAN/WeightedMEAN/GeomMEAN/SD/Npt/
+    Serr/Serr95%/Q_ARITH/Q_GEOM, une ligne par serie (0/ANI/cool)."""
+    def fmt(v):
+        return f"{v:6.1f}" if v is not None else "   n.d"
+
+    lines = ["       MEAN  WeightedMEAN  GeomMEAN   SD   Npt   Serr   Serr95%    Q_ARITH  Q_GEOM"]
+    for label in ("0", "ANI", "cool"):
+        s = table["series"][label]
+        lines.append(
+            f"{label:>5}:{fmt(s['mean'])} {fmt(s['weighted_mean'])}   {fmt(s['geom_mean'])} "
+            f"{fmt(s['sd'])} {s['npt']:4d}  {fmt(s['serr'])} {fmt(s['serr95'])}   "
+            f"{fmt(table['q_arith'])} {fmt(table['q_geom'])}"
+        )
+    return "\n".join(lines) + "\n"
 
 
 def meanpal_weighted(triples: Sequence[Tuple[float, float, float]]) -> Optional[dict]:

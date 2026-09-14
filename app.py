@@ -1987,32 +1987,83 @@ class StereoUtilsApp:
         mode = self._console_input("DATA FROM A FILE (1), KEYBOARD (3) : ", "3")
         if mode is None:
             return
-        triples = []
         if mode.strip() == "1":
             path = filedialog.askopenfilename(
                 title="mean paleointensity - file (F Q N, or a .pmagint)")
             if not path:
                 return
-            triples = pu.read_meanpal_file_triples(path)
-        else:
-            self._afficher("ENTER FIELD VALUE, Q, AND THE NUMBER OF STEPS\n(blank to stop, paste multiple lines OK)\n")
-            while True:
-                line = self._console_input("F Q N : ")
-                if line is None or not line.strip():
-                    break
-                for subline in self._split_pasted_rows(line):
-                    parts = subline.split()
-                    if len(parts) < 3:
-                        continue
-                    try:
-                        triples.append((float(parts[0]), float(parts[1]), float(parts[2])))
-                    except ValueError:
-                        continue
+            kind, data = pu.read_meanpal_file(path)
+            if not data:
+                self._afficher("no exploitable data in file\n")
+                return
+            if kind == "pmagint":
+                self._pu_meanpal_pmagint_loop(data)
+            else:
+                res = pu.meanpal_weighted(data)
+                if res is None:
+                    self._afficher("no exploitable data (N<=2 everywhere)\n")
+                    return
+                self._afficher(
+                    f"MEAN: {res['mean']:.1f}   WEIGHTED MEAN: {res['weighted_mean']:.1f}   "
+                    f"SD: {res['sd']:.1f}   N: {res['n']}\n")
+            return
+
+        triples = []
+        self._afficher("ENTER FIELD VALUE, Q, AND THE NUMBER OF STEPS\n(blank to stop, paste multiple lines OK)\n")
+        while True:
+            line = self._console_input("F Q N : ")
+            if line is None or not line.strip():
+                break
+            for subline in self._split_pasted_rows(line):
+                parts = subline.split()
+                if len(parts) < 3:
+                    continue
+                try:
+                    triples.append((float(parts[0]), float(parts[1]), float(parts[2])))
+                except ValueError:
+                    continue
         res = pu.meanpal_weighted(triples)
         if res is None:
             self._afficher("no exploitable data (N<=2 everywhere)\n")
             return
         self._afficher(f"MEAN: {res['mean']:.1f}   WEIGHTED MEAN: {res['weighted_mean']:.1f}   SD: {res['sd']:.1f}   N: {res['n']}\n")
+
+    def _pu_meanpal_pmagint_loop(self, rows):
+        """CASE(2) "FICHIER STARMAC" du Fortran (pmagoutils.f:612-824,
+        partie selection+calcul - la partie VDM/VADM en aval n'est pas
+        portee ici, hors perimetre "mean paleointensity") : affiche les
+        lignes numerotees, demande une plage i j, calcule/affiche la
+        table 3 series (0/ANI/cool) sur cette plage, puis propose de
+        recommencer - demande explicite utilisateur ("l'utilisateur doit
+        choisir les donnees a moyenner... Voir source en Fortran")."""
+        listing = "\n".join(f"{i:3d} : {r.label}" for i, r in enumerate(rows, start=1))
+        self._afficher(listing + "\n")
+        while True:
+            rng = self._console_input(
+                f"select lines i j for the mean calculation (1-{len(rows)}, blank to stop) : ", "")
+            if rng is None or not rng.strip():
+                return
+            parts = rng.replace(",", " ").split()
+            if len(parts) < 2:
+                self._afficher("invalid range - expected two numbers \"i j\"\n")
+                continue
+            try:
+                i, j = int(parts[0]), int(parts[1])
+            except ValueError:
+                self._afficher("invalid range - expected two numbers \"i j\"\n")
+                continue
+            subset = rows[max(1, i) - 1: j]
+            if not subset:
+                self._afficher("empty range\n")
+                continue
+            table = pu.meanpal_table(subset)
+            if table is None:
+                self._afficher("no exploitable data (N<=2 everywhere)\n")
+            else:
+                self._afficher(pu.format_meanpal_table(table))
+            again = self._console_input("DO YOU WANT ANOTHER CALCULATION (Y/N) : ", "n")
+            if again is None or again.strip().lower() != "y":
+                return
 
     def pu_vidimo(self):
         while True:
