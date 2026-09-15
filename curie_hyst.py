@@ -496,6 +496,77 @@ def format_hysteresis_result(res: HysteresisResult) -> str:
     )
 
 
+# ----------------------------------------------------------------------
+# Comparaison PmagPy (pmagpy.rockmag.process_hyst_loop) - demande
+# explicite utilisateur ("quels sont les routines dans PmagPy qui
+# analysent les Hysteresis, est ce possible d'avoir aussi leur
+# estimation des parametres"). Meme esprit que le pipeline
+# paleointensite parallele de STARpaleomag_Py/paleointensity_magic.py et
+# le bootstrap AMS_Py (ams_bootstrap.py) : PAS un remplacement de
+# compute_hysteresis (algorithme different - lineaire simple, fidele a
+# Curie_OSX/hysteresis.f - contre le pipeline moderne de pmagpy :
+# gridding, centrage, correction de derive instrumentale, tests de
+# fermeture/saturation, fit non-lineaire optionnel), mais une 2e
+# estimation INDEPENDANTE affichee a cote, pour comparaison. Verifie sur
+# 24WH0205_277mg_RGV.hys (VFTB) : Ms=0.2347 vs Js_ferro=0.224 Am2/kg,
+# Bc=11.98 vs Hc=12.53 mT, chi_HF=1.445e-7 vs susc_para_si=1.498e-7
+# m3/kg - deux algorithmes independants, accord a quelques % pres.
+# ----------------------------------------------------------------------
+
+def pmagpy_hysteresis_crosscheck(res: HysteresisResult) -> Optional[dict]:
+    """Appelle `pmagpy.rockmag.process_hyst_loop` sur la MEME boucle deja
+    normalisee par compute_hysteresis (`res.field` en Tesla, `res.
+    moment_norm` en Am2/kg - meme convention d'unites que documentee par
+    process_hyst_loop lui-meme). `fit_open_loop=True` : force
+    l'estimation de Ms/Bc/chi_HF meme si le test de fermeture interne de
+    pmagpy juge la boucle "ouverte" (comportement PAR DEFAUT de pmagpy
+    sinon : ne rapporte alors QUE Mr/Brh, les parametres independants de
+    la pente) - pour rester comparable a compute_hysteresis, qui calcule
+    TOUJOURS Js_ferro/Hc sans ce garde-fou ; le statut fermee/saturee de
+    pmagpy reste neanmoins rapporte (voir format_pmagpy_hysteresis), a
+    l'utilisateur de juger. Les avertissements pmagpy (fermeture/
+    saturation/derive) sont CAPTURES (`warnings.catch_warnings`) plutot
+    que perdus silencieusement sur stderr. Retourne None si le paquet
+    `pmagpy` n'est pas installe."""
+    try:
+        from pmagpy import rockmag
+    except ImportError:
+        return None
+    import warnings
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        result = rockmag.process_hyst_loop(
+            res.field, res.moment_norm, specimen_name=res.sample,
+            show_results_table=False, show_plot=False, fit_open_loop=True)
+    result["_warnings"] = [str(w.message) for w in caught]
+    return result
+
+
+def format_pmagpy_hysteresis(result: dict) -> str:
+    """Rendu texte de pmagpy_hysteresis_crosscheck - memes unites
+    (Am2/kg, mT) que format_hysteresis_result pour comparaison directe,
+    cote a cote."""
+    def _num(key: str, scale: float = 1.0, unit: str = "") -> str:
+        v = result.get(key)
+        if v is None or not np.isfinite(v):
+            return "n/a"
+        return f"{v * scale:.4g} {unit}".strip()
+
+    lines = [
+        " PmagPy (rockmag.process_hyst_loop) cross-check:",
+        f"  Ms (Js_ferro) : {_num('Ms', unit='Am2/kg')}",
+        f"  Bc (Hc)       : {_num('Bc', 1000.0, 'mT')}",
+        f"  chi_HF (susc.para) : {_num('chi_HF', unit='m3/kg')}",
+        f"  Mr (remanence): {_num('Mr', unit='Am2/kg')}   Brh: {_num('Brh', 1000.0, 'mT')}",
+        f"  loop closed: {result.get('loop_is_closed')}   "
+        f"loop saturated: {result.get('loop_is_saturated')}   "
+        f"loop linear: {result.get('loop_is_linear')}",
+    ]
+    for w in result.get("_warnings", []):
+        lines.append(f"  note: {w}")
+    return "\n".join(lines) + "\n"
+
+
 def _register_xaxis_pick(ax) -> None:
     """Permet de cliquer sur l'axe X (ligne/graduations/etiquette) pour
     changer sa borne (champ max affiche) - meme mecanisme que AMS_Py

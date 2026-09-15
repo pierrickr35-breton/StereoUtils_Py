@@ -55,7 +55,7 @@ from curie_kt import (
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
     vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
-    build_hysteresis_figure,
+    build_hysteresis_figure, pmagpy_hysteresis_crosscheck, format_pmagpy_hysteresis,
 )
 from site_map import read_prmag_sites, write_kml, write_gmt_map_script, build_site_map_figure
 
@@ -2938,7 +2938,26 @@ class StereoUtilsApp:
         self.hyst_result = res
         self.hyst_max_field = None  # reinitialise l'echelle X pour un nouvel echantillon
         self._afficher(format_hysteresis_result(res))
+        self._hyst_show_pmagpy_crosscheck(res)
         self.hyst_refresh_plot()
+
+    def _hyst_show_pmagpy_crosscheck(self, res):
+        """Affiche l'estimation INDEPENDANTE de pmagpy.rockmag.
+        process_hyst_loop cote a cote avec le resultat natif - demande
+        explicite utilisateur ("quels sont les routines dans PmagPy qui
+        analysent les Hysteresis, est ce possible d'avoir aussi leur
+        estimation des parametres"). Ne bloque jamais l'affichage du
+        resultat natif (deja fait par l'appelant avant ce point) : une
+        erreur pmagpy est juste signalee, pas fatale."""
+        try:
+            pmagpy_res = pmagpy_hysteresis_crosscheck(res)
+        except Exception as e:
+            self._afficher(f" PmagPy cross-check failed: {e}\n")
+            return
+        if pmagpy_res is None:
+            self._afficher(" PmagPy cross-check unavailable (pmagpy not installed).\n")
+            return
+        self._afficher(format_pmagpy_hysteresis(pmagpy_res))
 
     def hyst_open_vftb_file(self):
         """Format VFTB (Petersen Instruments, export .hys - voir
@@ -2994,6 +3013,7 @@ class StereoUtilsApp:
         self.hyst_result = res
         self.hyst_max_field = None
         self._afficher(format_hysteresis_result(res))
+        self._hyst_show_pmagpy_crosscheck(res)
         self.hyst_refresh_plot()
 
     def hyst_refresh_plot(self):
