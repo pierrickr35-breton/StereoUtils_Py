@@ -319,7 +319,29 @@ def read_vftb_file(path: str) -> Tuple[str, Optional[float], List[HystLoop]]:
                     field.append(h_oe * 1.0e-4)  # Oe -> Tesla
                     moment.append(mag_emu_g * mass_mg * 1.0e-6 if mass_mg else mag_emu_g)
                 i += 1
-            loops.append(HystLoop(sample=name, path=path, field=np.array(field), moment=np.array(moment)))
+            field_arr, moment_arr = np.array(field), np.array(moment)
+            # VFTB mesure souvent une courbe de premiere aimantation
+            # (0 -> +Hmax) AVANT la boucle proprement dite - demande
+            # explicite utilisateur ("le calcul du paramagnetisme est
+            # incorrect") : verifie sur un vrai fichier
+            # (24WH0205_277mg_RGV.hys) que field[0] n'etait PAS pres du
+            # champ maximal (0.0027 T alors que le maximum, 0.982 T,
+            # n'arrive qu'a l'indice 36/181) - compute_hysteresis suppose
+            # justement field[0]~+Hmax (convention AGM/VSM, ou la boucle
+            # demarre deja a saturation) pour placer son seuil "haut
+            # champ" (`valsat_frac * field[0]`) : sans ce retrait, ce
+            # seuil tombe pres de 0 et le fit paramagnetique utilise des
+            # points de la courbe de premiere aimantation, pas seulement
+            # les branches haute-saturation de la boucle. On retire tout
+            # ce qui precede le maximum GLOBAL du champ (si differe de
+            # l'indice 0) - verifie que le minimum tombe alors bien au
+            # milieu du tableau restant, signe d'une boucle bien formee
+            # (branche descendante puis remontante, symetrique).
+            if len(field_arr):
+                imax = int(np.argmax(field_arr))
+                if imax > 0:
+                    field_arr, moment_arr = field_arr[imax:], moment_arr[imax:]
+            loops.append(HystLoop(sample=name, path=path, field=field_arr, moment=moment_arr))
         else:
             i += 1
     return name, mass_mg, loops
