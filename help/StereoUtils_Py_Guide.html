@@ -471,6 +471,8 @@
       <li><a href="#project">Project</a></li>
       <li><a href="#pu">Pmag Utilities</a></li>
       <li><a href="#pmagpy">PmagPy-tools</a></li>
+      <li><a href="#kt">K-T</a></li>
+      <li><a href="#hysteresis">Hysteresis</a></li>
     </ul>
     <p class="toc-title">Reference</p>
     <ul>
@@ -490,6 +492,7 @@
       <h2>History and foreword</h2>
       <p>StereoUtils_Py is a port of <code>Stereo_V19</code> (<code>StereoOSX_x.f95</code> + a family of companion Fortran files — <code>stereograph.f</code>, <code>plotstereo.f95</code>, <code>pmagoutils.f</code>…), a Fortran/Qt5 stereonet and directional-statistics application from the same paleomagnetism laboratory (Géosciences Rennes) as its sibling applications <strong>STARpaleomag_Py</strong> and <strong>AMS_Py</strong>. Where those two process specimen measurements and anisotropy tensors, StereoUtils_Py is the general-purpose <em>directional statistics</em> toolbox: the stereonet itself (Wulff/Schmidt projections, "layers" of directions/means/great circles), the Fisher-family statistical tests, structural (bedding/borehole/fold) corrections, and a large collection of VGP/paleolatitude/rotation utilities that the original Fortran grouped under "Pmag Utilities".</p>
       <p>One menu, <strong>PmagPy-tools</strong>, is not a port at all: rather than reimplement routines the Fortran itself only <em>shelled out</em> to (writing a file, then invoking a standalone PmagPy command-line script — <code>plot_map_pts.py</code>, <code>incfish.py</code>, <code>foldtest.py</code>…), this port calls the installed <code>pmagpy</code> Python package's own functions directly. Same numerical results, no intermediate files or subprocess.</p>
+      <p>Two more menus, <strong>K-T</strong> and <strong>Hysteresis</strong>, are a port of a <em>different</em> companion Fortran program, <code>Curie_OSX</code> (susceptibility-vs-temperature and hysteresis-loop processing) — plotted directly with matplotlib rather than through the pixel-matched <code>plotlib</code> primitives the rest of the app uses. <strong>Pmag Utilities → Site Map</strong> is new work with no Fortran precedent at all: exporting <code>.prmag</code> site coordinates to KML/GMT/matplotlib maps.</p>
       <div class="callout">
         <strong>Open source.</strong> The source code is available on GitHub alongside STARpaleomag_Py and AMS_Py. As with its sibling applications, researchers and students wishing to use or modify this program are encouraged to do so through Claude.
       </div>
@@ -521,7 +524,7 @@
         <li><strong>Retouch</strong><span>Edit symbol/color/info by hand in the project file, reload</span></li>
       </ol>
       <div class="callout">
-        <strong>No keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, every command here is menu-only — there is no <code>Cmd+…</code> binding to learn.
+        <strong>Almost no keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, nearly every command here is menu-only — the one exception is <strong>Hysteresis → Normalize Plot</strong> (<code>Cmd+N</code>/<code>Ctrl+Shift+N</code>), the first shortcut added to this app.
       </div>
     </section>
 
@@ -778,6 +781,24 @@
         <div class="desc">Static help text describing the file formats <strong>Rotation vers GMT plot</strong> expects.</div>
       </div>
 
+      <h3 class="group">Site Map</h3>
+      <div class="item">
+        <div class="label">prmag to KML (Google Earth)...</div>
+        <div class="desc">Reads a <code>.prmag</code> file (its own minimal reader, specimen/site/lat/lon plus strike/dip/geologic type/lithology/age from the site's first specimen) and writes a Google Earth KML — one placemark per site, coordinates averaged across the site's specimens, styled to match the original Fortran KML output (bold field labels, line breaks, the same <code>styleUrl</code>).</div>
+      </div>
+      <div class="item">
+        <div class="label">prmag to GMT map script...</div>
+        <div class="desc">Same site list, written instead as a ready-to-run GMT6 script: <code>gmt coast</code> with shaded-grey continents, blue lakes/rivers, borders — no topography. GMT has no roads database, so a commented block explains how to add a Natural Earth roads file by hand. Site labels are decluttered automatically (a small spiral-nudge algorithm) into companion <code>_sites.txt</code>/<code>_labels.txt</code>/<code>_leaders.txt</code> data files.</div>
+      </div>
+      <div class="item">
+        <div class="label">Plot sites (matplotlib)...</div>
+        <div class="desc">The same sites plotted directly in the app's own canvas. With <strong>Basic basemap</strong> checked, adds coastlines/borders/roads/cities via Cartopy (falls back to a plain scatter plot with the real error message shown if Cartopy or its map data isn't available) — click-and-drag to zoom, double-click to reset.</div>
+      </div>
+      <div class="item">
+        <div class="label">Basic basemap (coastlines, roads, cities)</div>
+        <div class="desc">Checkbutton toggling whether <strong>Plot sites</strong> attempts the Cartopy basemap at all.</div>
+      </div>
+
       <h3 class="group">Core/bedding corrections</h3>
       <div class="item">
         <div class="label">Core correction...</div>
@@ -815,7 +836,7 @@
       <h3 class="group">Paleointensity</h3>
       <div class="item">
         <div class="label">mean paleointensity...</div>
-        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count) from a file or typed one at a time.</div>
+        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — which can now be a real <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side, matching the original Fortran's own three-row table. The old plain-format file keeps its original behavior: the whole file averaged in one shot, no selection step.</div>
       </div>
       <div class="item">
         <div class="label">VDM and VADM...</div>
@@ -887,6 +908,76 @@
       <div class="item">
         <div class="label">Mean Inclination</div>
         <div class="desc">McFadden &amp; Reid (1982) inclination-only mean via PmagPy's <code>pmag.doincfish</code> — same method as <strong>Statistics → Mean Inclination only</strong>, independent implementation.</div>
+      </div>
+    </section>
+
+    <!-- ========================= K-T ========================= -->
+    <section class="menu" id="kt">
+      <h2>K-T <span class="menu-tag">susceptibility vs. temperature (Curie_OSX)</span></h2>
+      <p class="menu-desc">Port of <code>Curie_OSX</code>'s susceptibility-vs-temperature routines (<code>curie_kt.py</code>) — reading raw <code>.CUR</code>/<code>.CLW</code> instrument files, correcting for the furnace/empty-vessel contribution, normalizing, and estimating the Curie point. Plotted directly with matplotlib (square aspect), not through the pixel-matched <code>plotlib</code> primitives.</p>
+
+      <div class="item">
+        <div class="label">Open .CUR/.CLW File...</div>
+        <div class="desc">Reads one raw instrument file directly (temperature + susceptibility columns; the file's other columns — CSUSC/NSUSC — are never populated by the acquisition software and are ignored).</div>
+      </div>
+      <div class="item">
+        <div class="label">Open Sample List...</div>
+        <div class="desc">Reads a sample list (<code>filename susceptibility mass zerodia [empty_vessel]</code> per row): <code>susceptibility=0</code> means normalize by mass; a nonzero value is an independent bulk-susceptibility anchor (already in SI, no unit conversion applied); <code>zerodia=999</code> means use a full empty-vessel correction curve (named in the last column) instead of a constant.</div>
+      </div>
+      <div class="item">
+        <div class="label">Select File from List...</div>
+        <div class="desc">Browses the loaded sample list one entry at a time, applying whichever correction/normalization that entry specifies and plotting the result — the same "step through and pick" pattern used by the AGM/VSM/Hysteresis sample lists.</div>
+      </div>
+      <div class="item">
+        <div class="label">Furnace Correction</div>
+        <div class="desc">Subtracts the empty-vessel's own diamagnetic curve from the loaded sample's curve — either a constant (<code>zerodia</code> value) or, for <code>zerodia=999</code>, a smoothed heating/cooling lookup table built from the named empty-vessel <code>.CUR</code> file.</div>
+      </div>
+      <div class="item">
+        <div class="label">Normalize by Mass / Normalize by Volume</div>
+        <div class="desc">Normalizes susceptibility either by the sample mass (mg, giving SI mass-susceptibility) or by an independent bulk-susceptibility anchor read from the sample list (SI volume susceptibility) — whichever the sample-list entry called for.</div>
+      </div>
+      <div class="item">
+        <div class="label">Curie Point (2nd derivative)</div>
+        <div class="desc">Estimates the Curie point separately for the heating and cooling branches (split at the maximum-temperature index) via the second-derivative-maximum method — despite the original Fortran's own name for this routine ("tauxe"), it is not the literal Tauxe et al. (1996) two-tangent method.</div>
+      </div>
+      <div class="item">
+        <div class="label">Plot K-T</div>
+        <div class="desc">Square-aspect plot of the curve (heating solid red, cooling dashed blue), with the two Curie-point estimates marked as vertical dotted lines.</div>
+      </div>
+    </section>
+
+    <!-- ========================= HYSTERESIS ========================= -->
+    <section class="menu" id="hysteresis">
+      <h2>Hysteresis <span class="menu-tag">AGM / VSM / VFTB loop processing (Curie_OSX)</span></h2>
+      <p class="menu-desc">Port of <code>Curie_OSX</code>'s hysteresis-loop routines (<code>curie_hyst.py</code>): paramagnetic/diamagnetic slope correction and Ms/Hc/Mr/Hcr extraction, verified field-by-field against the original Fortran's own historical results log for a real specimen. Three real instrument formats are supported, each with its own reader.</p>
+
+      <div class="item">
+        <div class="label">Open AGM Sample List... / Open VSM Sample List...</div>
+        <div class="desc">Loads a sample list (<code>id mass_mg</code> for AGM; <code>index id mass_mg</code> for VSM) alongside the matching raw data files in the same folder — AGM: <code>&lt;id&gt;</code> (full loop) + <code>&lt;id&gt;-r</code> (remanence/DCD curve); VSM: <code>&lt;id&gt; - 1.csv</code> + <code>&lt;id&gt; - 2.csv</code>. The instrument's own slope-corrected VSM export (<code>... Corrections.csv</code>) is deliberately not used — the raw file is always re-corrected by this same pipeline, for consistency between formats.</div>
+      </div>
+      <div class="item">
+        <div class="label">Select Sample to Plot...</div>
+        <div class="desc">Steps through the loaded AGM/VSM sample list, computing and plotting each one.</div>
+      </div>
+      <div class="item">
+        <div class="label">Open VFTB File...</div>
+        <div class="desc">A third format (Petersen Instruments VFTB, <code>.hys</code>) with no sample list at all: the specimen name and mass are already in the file's own header line, so one file opens and plots directly. A leading "virgin curve" segment some VFTB exports record before the actual loop (field ramping up from ~0 rather than starting near saturation) is detected and stripped automatically — left in, it corrupts the paramagnetic-slope fit. A "simple" VFTB file (one loop, no separate remanence/DCD curve) still reports Ms/Hc/χ<sub>para</sub> normally; Hcr/Mr are left unavailable rather than guessed.</div>
+      </div>
+      <div class="item">
+        <div class="label">Paramagnetic Fit Threshold...</div>
+        <div class="desc">Fraction of the maximum field (default 0.7) above which a point counts as "high field" for the paramagnetic slope fit — a real adjustable setting in the original program, not a fixed constant, and the exact historical value used for any one dataset generally isn't recoverable.</div>
+      </div>
+      <div class="item">
+        <div class="label">Normalize Plot <span class="mono">(Cmd+N / Ctrl+Shift+N)</span></div>
+        <div class="desc">Each of the three plotted curves (raw loop, slope-corrected loop, remanence/DCD) is normalized independently, by its own maximum — not a single shared reference — so each saturates near ±1 regardless of the other two. The one keyboard shortcut in this application.</div>
+      </div>
+      <div class="item">
+        <div class="label">Click the X-axis</div>
+        <div class="desc">Not a menu item — clicking the plot's X-axis (line, ticks, or label) prompts for a new maximum field, rescaling the plot symmetrically.</div>
+      </div>
+      <div class="item">
+        <div class="label">PmagPy cross-check</div>
+        <div class="desc">After computing a result from any of the three formats, a second, independent estimate from PmagPy's own modern hysteresis pipeline (<code>pmagpy.rockmag.process_hyst_loop</code> — gridding, centering, instrument-drift correction, closure/saturation tests) is shown alongside it: Ms, Bc, χ<sub>HF</sub>, Mr, Brh, plus whether PmagPy's own tests consider the loop closed/saturated. Not a replacement for the native result (a different algorithm) — a sanity check displayed next to it. Silently skipped (with a note) if <code>pmagpy</code> isn't installed.</div>
       </div>
     </section>
 
