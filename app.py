@@ -54,7 +54,8 @@ from curie_kt import (
 )
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
-    vsm_paths_for, compute_hysteresis, format_hysteresis_result, build_hysteresis_figure,
+    vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
+    build_hysteresis_figure,
 )
 from site_map import read_prmag_sites, write_kml, write_gmt_map_script, build_site_map_figure
 
@@ -642,6 +643,8 @@ class StereoUtilsApp:
         hyst_menu.add_command(label="Open AGM Sample List...", command=self.hyst_open_agm_list)
         hyst_menu.add_command(label="Open VSM Sample List...", command=self.hyst_open_vsm_list)
         hyst_menu.add_command(label="Select Sample to Plot...", command=self.hyst_select_from_list)
+        hyst_menu.add_separator()
+        hyst_menu.add_command(label="Open VFTB File...", command=self.hyst_open_vftb_file)
         hyst_menu.add_separator()
         hyst_menu.add_command(label="Paramagnetic Fit Threshold...", command=self.hyst_set_valsat)
         hyst_menu.add_checkbutton(
@@ -2934,6 +2937,62 @@ class StereoUtilsApp:
         res.sample = entry.filename
         self.hyst_result = res
         self.hyst_max_field = None  # reinitialise l'echelle X pour un nouvel echantillon
+        self._afficher(format_hysteresis_result(res))
+        self.hyst_refresh_plot()
+
+    def hyst_open_vftb_file(self):
+        """Format VFTB (Petersen Instruments, export .hys - voir
+        curie_hyst.read_vftb_file) - demande explicite utilisateur ("dans
+        Stereo, est ce possible d'ajouter a la lecture des fichiers
+        hysteresis, un format supplementaire (VFTB)"), verifie sur un
+        vrai fichier (24WH0205_277mg_RGV.hys). Contrairement a AGM/VSM,
+        nom ET masse sont DEJA dans le fichier lui-meme (1ere ligne) -
+        pas de liste d'echantillons a ouvrir separement, ni de selection
+        dans une liste : un seul fichier = un seul specimen, ouvert et
+        trace directement. Un fichier "simple" (une seule boucle, sans
+        courbe de remanence/DCD separee - le cas le plus courant) laisse
+        Hcr/Jrs indisponibles (voir compute_hysteresis(backfield=None)) ;
+        un fichier avec plusieurs blocs "Set N:" utilise le 2e comme
+        courbe de remanence/DCD."""
+        path = filedialog.askopenfilename(
+            title="Open VFTB File", filetypes=[("VFTB", "*.hys"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            name, mass_mg, loops = read_vftb_file(path)
+        except OSError as e:
+            self._showerror("Error", f"{os.path.basename(path)}: {e}")
+            return
+        if not loops:
+            self._showerror("Error", f"{os.path.basename(path)}: no \"Set\" block found.")
+            return
+        if mass_mg is None:
+            mass_s = self._console_input(
+                f"Mass not found in the file header for \"{name}\" - enter it manually (mg): ", "")
+            if mass_s is None:
+                return
+            try:
+                mass_mg = float(mass_s)
+            except ValueError:
+                self._showerror("Error", "Mass must be a number.")
+                return
+            # "mag" a ete laisse en emu/g faute de masse au moment de la
+            # lecture (voir read_vftb_file) - reconversion manuelle ici.
+            for lp in loops:
+                lp.moment = lp.moment * mass_mg * 1.0e-6
+
+        loop = loops[0]
+        backfield = loops[1] if len(loops) > 1 else None
+        res = compute_hysteresis(loop, backfield, mass_mg, valsat_frac=self.hyst_valsat_frac)
+        if res is None:
+            self._showerror(
+                "Error",
+                f"{name}: could not compute hysteresis parameters "
+                "(loop too short, or no point above the high-field threshold).")
+            return
+        res.sample = name
+        self.hyst_result = res
+        self.hyst_max_field = None
         self._afficher(format_hysteresis_result(res))
         self.hyst_refresh_plot()
 

@@ -27,6 +27,27 @@ et un exemple de fichier liste ... et ici des vieilles donnees d'AGM") :
    fichier de preference d'origine, d'ou `valsat_frac` expose ici comme
    parametre, defaut 0.7 = le defaut committe du Fortran).
 
+2bis) VFTB (Petersen Instruments Variable Field Translation Balance,
+   export .hys texte) - demande explicite utilisateur ("dans Stereo, est
+   ce possible d'ajouter a la lecture des fichiers hysteresis, un format
+   supplementaire (VFTB)"), verifie sur un vrai fichier
+   (24WH0205_277mg_RGV.hys) : 1ere ligne "name: <nom>\tweight: <masse>
+   mg" (cle:valeur, meme convention que .prmag), puis un ou plusieurs
+   blocs "Set N:" (une ligne d'entete de colonnes par bloc, colonnes
+   identifiees par NOM - "field / Oe", "mag / emu / g" - PAS une
+   position fixe, les colonnes temp/time/std dev/suscep ne sont pas
+   utilisees ici). Contrairement a AGM/VSM, masse et nom sont DEJA dans
+   le fichier lui-meme - pas de liste d'echantillons separee necessaire.
+   Champ en Oe (converti en Tesla, x1e-4) ; "mag" est DEJA normalise par
+   la masse (emu/g, magnetisation specifique CGS) - reconverti ici en
+   moment BRUT (Am2) via la masse du fichier, pour rester dans la MEME
+   convention (HystLoop.moment non-normalise) que les 2 autres formats
+   et reutiliser exactement le meme compute_hysteresis. Un fichier VFTB
+   "simple" (une seule boucle, PAS de courbe de remanence/DCD separee)
+   est courant : voir compute_hysteresis(backfield=None) - Hcr/Jrs
+   deviennent alors indisponibles (nan), le reste (JsMax/Js_Ferro/Hc/
+   suscepPara) reste calculable normalement a partir de la boucle seule.
+
 2) VSM moderne (LakeShore/MicroMag, export CSV natif,
    /Users/pierrickroperch/Paleomag_data/VSM_Nov2022, 2022) - PAS un format
    du Fortran d'origine (logiciel different/plus recent) : bloc d'entete
@@ -56,6 +77,7 @@ have a plot with a square shape" puis "the same logic applies to the
 hysteresis plots") : PAS de port pixel-pres via plotlib.PlotContext."""
 
 import os
+import re
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -221,7 +243,90 @@ def vsm_paths_for(base_dir: str, sample_id: str) -> Tuple[str, str]:
 
 
 # ----------------------------------------------------------------------
-# Calcul (commun AGM/VSM) - port de suppara/calculhyste/LINREG
+# VFTB (Petersen Instruments, export .hys) - voir docstring de module,
+# verifie sur 24WH0205_277mg_RGV.hys.
+# ----------------------------------------------------------------------
+
+def _vftb_kv_line(line: str) -> Dict[str, str]:
+    """"name: <nom>\tweight: <masse> mg" -> {"name": "<nom>", "weight":
+    "<masse> mg"} - meme principe cle:valeur tabule que .prmag, colonnes
+    dans un ORDRE quelconque."""
+    result: Dict[str, str] = {}
+    for chunk in line.split("\t"):
+        if ":" not in chunk:
+            continue
+        k, _sep, v = chunk.partition(":")
+        result[k.strip().lower()] = v.strip()
+    return result
+
+
+def read_vftb_file(path: str) -> Tuple[str, Optional[float], List[HystLoop]]:
+    """Lit un fichier VFTB .hys (voir docstring de module) : nom+masse
+    depuis la 1ere ligne, puis une `HystLoop` par bloc "Set N:" rencontre
+    (colonnes "field"/"mag" retrouvees PAR NOM sur la ligne d'entete de
+    chaque bloc, insensible a la casse - les autres colonnes eventuelles,
+    temp/time/std dev/suscep, sont ignorees). "mag" (emu/g, DEJA
+    normalise par la masse) est reconverti en moment BRUT (Am2) via la
+    masse lue en 1ere ligne, pour rester dans la meme convention
+    (HystLoop.moment non-normalise) que AGM/VSM - `emu/g * masse(mg) *
+    1e-6 = Am2` (1 emu = 1e-3 Am2, masse(mg)/1000 = masse(g)). Si la
+    masse n'est pas trouvable/valide dans l'entete, "mag" est laisse tel
+    quel (emu/g) - l'appelant doit alors fournir la masse autrement et
+    ne PAS reutiliser compute_hysteresis sans reconversion.
+
+    Retourne (nom, masse_mg ou None, liste de HystLoop - une par "Set",
+    dans l'ordre du fichier ; typiquement 1 seule (boucle complete, pas
+    de courbe de remanence/DCD separee) ou 2 (boucle + backfield)."""
+    with open(path, "r", encoding="iso-8859-1", errors="replace") as f:
+        lines = [ln.rstrip("\n") for ln in f]
+    if not lines:
+        return os.path.splitext(os.path.basename(path))[0], None, []
+
+    header = _vftb_kv_line(lines[0])
+    name = header.get("name") or os.path.splitext(os.path.basename(path))[0]
+    mass_mg: Optional[float] = None
+    m = re.match(r"[-+]?[\d.]+", header.get("weight", "").strip())
+    if m:
+        try:
+            mass_mg = float(m.group())
+        except ValueError:
+            mass_mg = None
+
+    loops: List[HystLoop] = []
+    i, n = 1, len(lines)
+    while i < n:
+        if lines[i].strip().lower().startswith("set"):
+            i += 1
+            while i < n and not lines[i].strip():
+                i += 1
+            if i >= n:
+                break
+            cols = [c.strip().lower() for c in lines[i].split("\t")]
+            field_idx = next((j for j, c in enumerate(cols) if c.startswith("field")), None)
+            mag_idx = next((j for j, c in enumerate(cols) if c.startswith("mag")), None)
+            i += 1
+            field: List[float] = []
+            moment: List[float] = []
+            while i < n and lines[i].strip():
+                parts = lines[i].split("\t")
+                if field_idx is not None and mag_idx is not None and len(parts) > max(field_idx, mag_idx):
+                    try:
+                        h_oe = float(parts[field_idx])
+                        mag_emu_g = float(parts[mag_idx])
+                    except ValueError:
+                        i += 1
+                        continue
+                    field.append(h_oe * 1.0e-4)  # Oe -> Tesla
+                    moment.append(mag_emu_g * mass_mg * 1.0e-6 if mass_mg else mag_emu_g)
+                i += 1
+            loops.append(HystLoop(sample=name, path=path, field=np.array(field), moment=np.array(moment)))
+        else:
+            i += 1
+    return name, mass_mg, loops
+
+
+# ----------------------------------------------------------------------
+# Calcul (commun AGM/VSM/VFTB) - port de suppara/calculhyste/LINREG
 # (hysteresis.f:258-470), verifie contre Resu_Chile2.txt (CL2603).
 # ----------------------------------------------------------------------
 
@@ -269,7 +374,7 @@ def _last_sign_change(arr: np.ndarray, lo: int, hi: int) -> Optional[int]:
 
 
 def compute_hysteresis(
-    loop: HystLoop, backfield: HystLoop, mass_mg: float, valsat_frac: float = 0.7,
+    loop: HystLoop, backfield: Optional[HystLoop], mass_mg: float, valsat_frac: float = 0.7,
 ) -> Optional[HysteresisResult]:
     """Equivalent du pipeline `selectfichhystAGM` (calcul de JsMax/Hc brut)
     + `suppara` (correction paramagnetique + Hc post-correction) +
@@ -279,7 +384,14 @@ def compute_hysteresis(
     laquelle un point est considere "haut champ" pour le fit
     paramagnetique - equivalent du reglage `prefhyste`/`valsat`, PAS une
     constante figee. Retourne None si la boucle est trop courte ou si
-    aucun point ne depasse le seuil haut-champ des deux cotes."""
+    aucun point ne depasse le seuil haut-champ des deux cotes.
+
+    `backfield` : None (ou une courbe vide) quand aucune courbe de
+    remanence/DCD separee n'est disponible - demande explicite
+    utilisateur (ajout du format VFTB, dont un fichier "simple" ne
+    contient souvent qu'UNE boucle) : Hcr/Jrs deviennent alors "nan"
+    (indisponibles), le reste (JsMax/Js_Ferro/Hc/suscepPara, qui ne
+    dependent que de la boucle elle-meme) reste calcule normalement."""
     x = loop.field
     n = len(x)
     if n < 6:
@@ -313,20 +425,26 @@ def compute_hysteresis(
         _slope2, hc = _ols(x2, y2)
         hc_mt = hc * 1000.0
 
-    bfield = backfield.field
-    jsrem = backfield.moment / mass_kg
-    jrs = float(jsrem[0]) if len(jsrem) else float("nan")
-    icr = None
-    for i in range(len(jsrem)):
-        if jsrem[i] < 0.0:
-            icr = i
-            break
-    if icr is None or icr == 0:
-        hcr_mt = float("nan")
+    if backfield is not None and len(backfield.field):
+        bfield = backfield.field
+        jsrem = backfield.moment / mass_kg
+        jrs = float(jsrem[0])
+        icr = None
+        for i in range(len(jsrem)):
+            if jsrem[i] < 0.0:
+                icr = i
+                break
+        if icr is None or icr == 0:
+            hcr_mt = float("nan")
+        else:
+            xr = -bfield[icr] + bfield[icr - 1]
+            yr = jsrem[icr - 1] / (jsrem[icr - 1] - jsrem[icr])
+            hcr_mt = (-bfield[icr - 1] + xr * yr) * 1000.0
     else:
-        xr = -bfield[icr] + bfield[icr - 1]
-        yr = jsrem[icr - 1] / (jsrem[icr - 1] - jsrem[icr])
-        hcr_mt = (-bfield[icr - 1] + xr * yr) * 1000.0
+        bfield = np.array([])
+        jsrem = np.array([])
+        jrs = float("nan")
+        hcr_mt = float("nan")
 
     return HysteresisResult(
         sample=loop.sample, mass_mg=mass_mg,
