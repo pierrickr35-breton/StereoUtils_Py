@@ -66,4 +66,8 @@ app = BUNDLE(
     name='StereoUtils_Py.app',
     icon=None,
     bundle_identifier=None,
+    # LANG/LC_ALL explicites - meme correctif que AMS_Py.spec/
+    # STARpaleomag_Py.spec, complement de root.tk.call("encoding",
+    # "system", "utf-8") dans app.py.
+    info_plist={'LSEnvironment': {'LANG': 'en_US.UTF-8', 'LC_ALL': 'en_US.UTF-8'}},
 )
