@@ -428,7 +428,6 @@ def draw_project(
             ityp = open_t if ifl == 5 else filled_t
             ctx.symbol(v * r, u * r, e.size, ityp, -1)
     ctx.newpen(1)
-    ctx.set_gid(None)
 
 
 def build_project_figure(
