@@ -146,6 +146,20 @@ class StereoUtilsApp:
         # d'accueil.
         self._help_anchor = None
 
+        # Parametres du dernier "Plot stereo project" affiche (entries/la/
+        # phi/iproj/dim, une COPIE - voir plot_project), ou None si le
+        # dernier trace affiche n'est PAS un Plot stereo project - demande
+        # explicite utilisateur ("mon exportation svg anterieure qui
+        # gardait les calques" ; "circle of confidence... now this
+        # behavior has changed") : quand ce n'est pas None, export_svg
+        # rejoue le trace via stereo_project.build_project_svg (SVGWriter,
+        # calques + polylines fideles au Fortran) plutot que
+        # self.fig.savefig() (qui n'a ni l'un ni l'autre). Remis a None au
+        # debut de _redraw_canvas/_show_images (tout autre trace l'annule)
+        # et repositionne par plot_project APRES son propre appel a
+        # _redraw_canvas.
+        self._project_svg_state = None
+
         self._setup_menu()
         self._setup_shortcuts()
 
@@ -281,6 +295,14 @@ class StereoUtilsApp:
         par l'utilisateur (le widget Tk est la source de verite pour la
         taille de la Figure, et ne se resynchronise que sur un vrai
         evenement <Configure>)."""
+        # Tout appelant SAUF plot_project passe par ici pour afficher son
+        # trace - reinitialiser ici, plutot que dans chaque commande de
+        # trace individuellement, garantit que _project_svg_state ne
+        # reste jamais "vrai" pour un trace qui n'est plus un Plot stereo
+        # project (voir son commentaire dans __init__). plot_project
+        # reaffecte la valeur correcte juste APRES son propre appel a
+        # cette methode.
+        self._project_svg_state = None
         self.root.update_idletasks()
         w = self.root.winfo_width()
         h = self.root.winfo_height()
@@ -302,6 +324,7 @@ class StereoUtilsApp:
         fonction PmagPy (qui trace elle-meme via pyplot, sans parametre
         `fig=` compatible avec ce canvas) - empiles verticalement si
         plusieurs, meme motif que xygraph.py cote Starmac."""
+        self._project_svg_state = None  # voir _redraw_canvas
         if not files:
             self._afficher("(no plot produced)\n")
             return
@@ -420,7 +443,17 @@ class StereoUtilsApp:
         svg") : pas besoin d'un code d'export separe, matplotlib ecrit un
         SVG directement depuis la Figure actuellement affichee dans le
         canvas integre (`self.fig`, quel que soit le trace en cours -
-        reseau stereo, projet, carte VGP...)."""
+        reseau stereo, projet, carte VGP...).
+
+        EXCEPTION pour Plot stereo project (voir self._project_svg_state,
+        mis a jour par plot_project/_redraw_canvas/_show_images) : rejoue
+        le trace via stereo_project.build_project_svg (SVGWriter, port
+        fidele du Fortran) plutot que self.fig.savefig() - demande
+        explicite utilisateur apres deux regressions constatees dans le
+        rendu matplotlib : les calques nommes ("mon exportation svg
+        anterieure qui gardait les calques") et les cercles de confiance
+        en un seul objet continu plutot qu'en segments separes ("now this
+        behavior has changed")."""
         if not self.fig.axes:
             messagebox.showwarning("No graphic", "Plot something first (e.g. Plot stereo).")
             return
@@ -432,7 +465,11 @@ class StereoUtilsApp:
         if not path:
             return
         try:
-            self.fig.savefig(path, format="svg")
+            if self._project_svg_state is not None:
+                entries, la, phi, iproj, dim = self._project_svg_state
+                sproj.build_project_svg(entries, la=la, phi=phi, iproj=iproj, dim=dim).save(path)
+            else:
+                self.fig.savefig(path, format="svg")
         except Exception:
             # Traceback complet (pas seulement str(e)) - demande explicite
             # utilisateur apres un rapport de bug peu exploitable ("export
@@ -1383,6 +1420,11 @@ class StereoUtilsApp:
         if self.graph_title:
             self.fig.axes[0].set_title(self.graph_title)
         self._redraw_canvas()
+        # Copie (pas une reference vers self.project_entries, qui peut
+        # changer avant un futur Export SVG) - voir __init__ et export_svg.
+        self._project_svg_state = (
+            list(self.project_entries), self.la, self.phi, self.iproj, self.dim,
+        )
 
     def fisher_project(self):
         """Equivalent de `fisherproject` (Project > Fisher Project) :

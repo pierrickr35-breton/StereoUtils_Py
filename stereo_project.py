@@ -453,3 +453,43 @@ def build_project_figure(
     ax.autoscale_view()
     fig.tight_layout()
     return fig
+
+
+def build_project_svg(
+    entries: Sequence[ProjectEntry],
+    la: float = -90.0, phi: float = 0.0, iproj: int = 0, dim: float = 21.0,
+):
+    """Equivalent de `build_project_figure`, mais via SVGWriter (port
+    fidele du rendu SVG Fortran, voir svgwriter.py) plutot que matplotlib -
+    demande explicite utilisateur ("mon exportation svg anterieure qui
+    gardait les calques" ; "circle of confidence... continuous line as a
+    single object... now this behavior has changed") : contrairement a
+    PlotContext (un Line2D matplotlib PAR SEGMENT, un `<g>` distinct par
+    artiste a l'export), SVGWriter accumule les points consecutifs (mode 2
+    apres mode 2) dans UNE SEULE balise <polyline> - restaure l'objet
+    unique attendu pour un cercle de confiance (120 segments) en plus des
+    calques nommes (voir SVGWriter.set_gid).
+
+    N'est utilise QUE par app.export_svg quand le dernier trace affiche
+    est un Plot stereo project (voir app._project_svg_state) - le rendu
+    ECRAN (canvas Tk) continue de passer par build_project_figure/
+    matplotlib, inchange (SVGWriter ne dessine que dans un buffer texte,
+    pas sur un widget Tk).
+
+    Page/origine : constantes LITTERALES de `plotproject`/`plots`
+    (plotstereo.f95, graphicsAWE.f95) - `plots(1.,1.,fname)` retombe sur
+    la page par defaut de `svginit` (20x20cm, les arguments < 2.0 sont
+    ignores) et `scrhor`/`scrvor` valent TOUJOURS 90.0/600.0 (mis
+    inconditionnellement par `plots`, indpendant de ses arguments) ; le
+    diagramme lui-meme est ancre a `call plot(u0,v0,-3)` avec u0=7.4,
+    v0=10.6 (memes valeurs que `plotproject`) - memes constantes deja
+    utilisees par STARpaleomag_Py/app._write_svg_debug pour Zijderveld
+    (origine page 90/600), verifiees contre de vrais exports."""
+    from svgwriter import SVGWriter
+    writer = SVGWriter(width_cm=20.0, height_cm=20.0)
+    writer.set_origin_px(90.0, 600.0)
+    writer.plot(7.4, 10.6, -3)
+    r = draw_stereo_net(writer, la, phi, iproj, dim)
+    draw_project(writer, entries, r, la, phi, iproj)
+    writer.plotnd()
+    return writer

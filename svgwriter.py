@@ -313,6 +313,38 @@ class SVGWriter:
     def group(self, start: bool) -> None:
         pass
 
+    def set_gid(self, gid: Optional[str]) -> None:
+        """Equivalent de `newlayer` (graphicsAWE.f95:1090, branche plotsvg) :
+        ferme la polyline en cours puis ecrit litteralement `</g>` suivi
+        d'un nouveau `<g id="gid">` - demande explicite utilisateur ("mon
+        exportation svg anterieure qui gardait les calques", au sujet du
+        systeme Project/calques - voir stereo_project.draw_project/
+        build_project_svg). Porte aussi `inkscape:groupmode="layer"` et
+        `inkscape:label="gid"` (absents du Fortran d'origine, qui ne
+        ciblait qu'Illustrator - "Create Layers from top-level groups" y
+        accepte n'importe quel groupe nomme) - demande explicite
+        utilisateur suite a un test reel ("ca ne marche pas bien dans
+        Inkscape") : Inkscape, lui, n'affiche un groupe comme calque dans
+        son propre panneau QUE s'il porte ces deux attributs.
+
+        `gid=None` referme le calque courant SANS le remplacer par un nom
+        - reouvre un groupe neutre "layerpmag0" (memes conventions que
+        l'entete de `to_string()`) plutot que de ne rien reouvrir : le
+        pied de page de `to_string()` referme INCONDITIONNELLEMENT UN
+        groupe, laisser le document sans aucun groupe ouvert produirait
+        un `</g>` surnumeraire (SVG invalide)."""
+        self._close_polyline()
+        excla = '"'
+        self._lines.append("</g>")
+        if gid:
+            self._lines.append(
+                f"<g id={excla}{gid}{excla} "
+                f"inkscape:groupmode={excla}layer{excla} "
+                f"inkscape:label={excla}{gid}{excla}>"
+            )
+        else:
+            self._lines.append('<g id="layerpmag0">')
+
     def plotnd(self) -> None:
         """Equivalent partiel du mode 999 (fin de trace) : ferme toute
         polyline en cours. L'ecriture des balises de fin de document
@@ -329,6 +361,11 @@ class SVGWriter:
             '<?xml version="1.0" encoding="iso-8859-1"?>\n'
             '<svg version="1.2" baseProfile="tiny" xmlns="http://www.w3.org/2000/svg"\n'
             'xmlns:xlink="http://www.w3.org/1999/xlink"\n'
+            # xmlns:inkscape - inoffensif pour les documents sans calque
+            # (voir set_gid), necessaire pour que ses attributs
+            # inkscape:groupmode/inkscape:label soient valides des qu'un
+            # document EN a.
+            'xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"\n'
             f' x="0px" y="0px" width="{self.width_cm:.1f}cm" height="{self.height_cm:.1f}cm" xml:space="preserve">\n'
             '<g id="layerpmag0">\n'
         )
