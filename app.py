@@ -30,6 +30,7 @@ import subprocess
 import sys
 import tempfile
 import tkinter as tk
+import traceback
 import webbrowser
 from tkinter import ttk, filedialog, messagebox
 
@@ -432,8 +433,21 @@ class StereoUtilsApp:
             return
         try:
             self.fig.savefig(path, format="svg")
-        except Exception as e:
-            messagebox.showerror("Error", f"SVG export failed:\n{e}")
+        except Exception:
+            # Traceback complet (pas seulement str(e)) - demande explicite
+            # utilisateur apres un rapport de bug peu exploitable ("export
+            # failed err -3 incorrect header", sans type d'exception ni
+            # ligne fautive) : impossible a diagnostiquer plus loin sans
+            # savoir QUELLE exception (zlib.error ? OSError ? autre chose
+            # d'un import tardif de matplotlib.backends.backend_svg,
+            # charge dynamiquement seulement ici - voir le commentaire de
+            # StereoUtils_Py.spec sur hiddenimports) et OU exactement elle
+            # survient. Affiche dans la console de l'app (self._afficher,
+            # texte long/scrollable) plutot que dans la messagebox (trop
+            # etroite pour un traceback complet).
+            tb = traceback.format_exc()
+            self._afficher(f"SVG export failed:\n{tb}\n")
+            messagebox.showerror("Error", "SVG export failed - see the console below for the full traceback.")
             return
         self._afficher(f"Graphic exported: {path}\n")
 
