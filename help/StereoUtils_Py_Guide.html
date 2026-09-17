@@ -644,8 +644,8 @@
         <div class="label">Export SVG...</div>
         <div class="desc">Exports whichever plot is currently displayed to an SVG file. For any plot other than <strong>Plot stereo project</strong>, matplotlib writes it directly from the on-screen Figure. For <strong>Plot stereo project</strong> specifically, the plot is instead re-rendered through a dedicated writer that faithfully reproduces the original Fortran's own SVG output (<code>svgwriter.py</code>, port of <code>graphicsAWE.f95</code>'s <code>svginit</code>/<code>svgplot</code>/<code>newlayer</code>) rather than matplotlib's generic exporter:
           <ul style="margin:0.4rem 0 0 1.2rem; padding:0;">
-            <li>every entry drawn from a given <a href="#project">Project</a> "layer" is wrapped in its own named <code>&lt;g&gt;</code>, carrying both a plain <code>id</code> (Illustrator's "Create Layers from top-level groups" import) and Inkscape's own <code>inkscape:groupmode="layer"</code>/<code>inkscape:label</code> attributes (Inkscape's Layers panel needs these specifically — a plain <code>id</code> alone shows up there as an ordinary group, not a layer);</li>
-            <li>a continuous trace (a confidence ellipse's 120 segments, for instance) is written as a single <code>&lt;polyline&gt;</code> — one selectable object in Illustrator/Inkscape — instead of matplotlib's one separate path per segment.</li>
+            <li>every entry drawn from a given <a href="#project">Project</a> "layer" is wrapped in its own <code>&lt;g id="layer name"&gt;</code>, exactly like the original Fortran's <code>newlayer</code> — the same bare grouping already confirmed to import cleanly as named layers in both Illustrator and Inkscape;</li>
+            <li>a continuous trace (a confidence ellipse's 120 segments, for instance) is written as a single <code>&lt;polyline&gt;</code> — one selectable object — instead of matplotlib's one separate path per segment.</li>
           </ul>
         </div>
       </div>
