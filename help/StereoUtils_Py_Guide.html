@@ -533,7 +533,7 @@
       <h2>Data <span class="menu-tag">directions, means, great circles</span></h2>
       <p class="menu-desc">Build the three working lists (directions / means / great circles) that everything else — Graphics, Statistics — plots or tests.</p>
 
-      <div class="item">
+      <div class="item" id="data-load">
         <div class="label">File [D-I]...</div>
         <div class="desc">Loads dec/inc pairs from a file into <strong>directions</strong>. Prompts for a path (between consecutive points, for the connecting arc drawn on the stereonet) and a symbol, applied to every point loaded this way.</div>
       </div>
@@ -553,7 +553,7 @@
         <div class="label">File [great circle]...</div>
         <div class="desc">Loads great-circle poles (glon, glat) into <strong>great circles</strong>, with an optional sector (ad1, ai1, ad2, ai2) restricting the drawn arc — otherwise the full circle is drawn.</div>
       </div>
-      <div class="item">
+      <div class="item" id="data-manual">
         <div class="label">Manual [D-I]...</div>
         <div class="desc">Types dec/inc pairs in one at a time (loop, Escape to stop), appended to <strong>directions</strong>.</div>
       </div>
@@ -565,7 +565,7 @@
         <div class="label">Manual [great circle]...</div>
         <div class="desc">Types great-circle poles in one at a time, appended to <strong>great circles</strong>.</div>
       </div>
-      <div class="item">
+      <div class="item" id="data-edit">
         <div class="label">List-data</div>
         <div class="desc">Lists everything currently in all three working lists — directions, means, great circles — with their index numbers, needed by the Delete commands below.</div>
       </div>
@@ -585,7 +585,7 @@
         <div class="label">Initialize...</div>
         <div class="desc">Clears one or more of the three working lists, after confirmation.</div>
       </div>
-      <div class="item">
+      <div class="item" id="data-help">
         <div class="label">Help Data (file headers)</div>
         <div class="desc">Displays the accepted file layouts for each Load command above — column order, and the self-describing header names each reader recognizes.</div>
       </div>
@@ -596,7 +596,7 @@
       <h2>Graphics <span class="menu-tag">plots, projects, VGP maps, export</span></h2>
       <p class="menu-desc">Everything that draws something — the native stereonet, the Project/VGP-Project systems, projection settings, and SVG export — gathered into one menu (originally split across "Command" and "Projection").</p>
 
-      <div class="item">
+      <div class="item" id="graphics-plot">
         <div class="label">Plot stereo</div>
         <div class="desc">Draws the stereonet frame plus the current <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists, in the canvas built into the window. This is the everyday plot command.</div>
       </div>
@@ -620,7 +620,7 @@
         <div class="label">Graph title...</div>
         <div class="desc">Sets a title shown above the next <strong>Plot stereo</strong>/<strong>Plot stereo project</strong> plot.</div>
       </div>
-      <div class="item">
+      <div class="item" id="graphics-proj">
         <div class="label">Stereographic (Wulff)</div>
         <div class="desc">Equal-angle projection.</div>
       </div>
@@ -640,7 +640,7 @@
         <div class="label">Symbol size & color...</div>
         <div class="desc">Sets the default symbol size (cm) used for newly loaded directions/means/great circles. Symbol <em>shape</em> follows the single character typed at load time (<code>c</code>/<code>t</code>/<code>e</code>/<code>l</code>/<code>s</code> — circle/triangle/star/diamond/square) rather than a separate global setting; color on the native stereonet follows open-vs-filled by hemisphere, not a chosen color (that per-entry color control is specific to the Project system — see <strong>Help Project</strong> below).</div>
       </div>
-      <div class="item">
+      <div class="item" id="graphics-svg">
         <div class="label">Export SVG...</div>
         <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the on-screen Figure, no separate export code needed.</div>
       </div>
@@ -651,7 +651,7 @@
       <h2>Statistics <span class="menu-tag">Fisher family & structural tests</span></h2>
       <p class="menu-desc">Directional statistics on the current <strong>directions</strong>/<strong>great circles</strong> lists — mostly native ports of the original Fortran's own routines (<code>stereo_stats.py</code>), independent of the PmagPy-backed tests under <strong>PmagPy-tools</strong>.</p>
 
-      <div class="item">
+      <div class="item" id="statistics-fisher">
         <div class="label">Fisher Statistics...</div>
         <div class="desc">Fisher (1953) mean of the current directions (≥2 needed), with an optional angular cutoff to drop points too far from the mean before finalizing it. The resulting mean is appended to <strong>means</strong>. Port of <code>ANGU</code>.</div>
       </div>
@@ -663,11 +663,7 @@
         <div class="label">Fisher recursive...</div>
         <div class="desc">Like <strong>Fisher Statistics</strong>, but the outlier cutoff (default 20°, prompted) is applied recursively, re-trimming and re-computing the mean each pass, needs ≥3 directions. Port of <code>angurecur</code>.</div>
       </div>
-      <div class="item">
-        <div class="label">St Dev dipole...</div>
-        <div class="desc">Angular standard deviation about a user-supplied reference direction (default: the geographic axial dipole, dec=0/inc=90) rather than about the data's own Fisher mean. Port of <code>STDDIP</code>.</div>
-      </div>
-      <div class="item">
+      <div class="item" id="statistics-strati">
         <div class="label">Fisher Strati</div>
         <div class="desc">Needs ≥3 directions. Rotates each direction (declination +90°) and replaces the <strong>great circles</strong> list with the resulting poles — a direct port of <code>STRATI</code>, side effect included (the original Fortran overwrites its own great-circle array the same way).</div>
       </div>
@@ -675,13 +671,17 @@
         <div class="label">progressive Fold test...</div>
         <div class="desc">Loads its own site-by-site data file (site, dec, inc, azimuth, dip — site column optional) independent of whatever is already loaded, and replaces <strong>directions</strong> with the set of directions unfolded at the percentage of tilt correction that maximizes clustering. Port of <code>FOLDTEST</code>.</div>
       </div>
-      <div class="item">
+      <div class="item" id="statistics-inc">
         <div class="label">Mean Inclination only</div>
         <div class="desc">Needs ≥2 directions. McFadden &amp; Reid (1982) inclination-only estimator: reports the arithmetic mean, the Arason-biased mean, the McFadden-unbiased mean, a precision parameter and α95. A native port (<code>stereo_stats.mean_inclination_native</code>), distinct from the PmagPy-backed <strong>Mean Inclination</strong> under PmagPy-tools (same statistical method, independent implementation).</div>
       </div>
       <div class="item">
         <div class="label">smallcircles Intersect</div>
         <div class="desc">Computes small-circle intersections from the first two or three entries currently in <strong>means</strong> — a limitation inherited directly from the original Fortran (<code>intersect2</code>), which only ever reads the first few mean directions rather than letting you pick which ones. Appends the intersection point(s) found to <strong>directions</strong>.</div>
+      </div>
+      <div class="item" id="statistics-angle">
+        <div class="label">angular departure from a specific direction...</div>
+        <div class="desc">For each current direction, the angular distance ("ADM") from a user-supplied reference direction (default: the geographic axial dipole, dec=0/inc=90) — flagged with <code>&gt;</code> when it exceeds twice the set's own angular standard deviation about that same reference ("STV", printed first). Renamed from the original Fortran's <code>STDDIP</code> label ("St Dev dipole") to describe what it actually reports: unlike <strong>Fisher Statistics</strong>, the reference is fixed by you, not the data's own Fisher mean.</div>
       </div>
       <div class="item">
         <div class="label">Reversal angle...</div>
@@ -698,7 +698,7 @@
       <h2>Project <span class="menu-tag">multi-layer symbol/color system</span></h2>
       <p class="menu-desc">A separate in-memory list, <code>self.project_entries</code> — directions, means and great circles together, each with its own hand-editable symbol, color and size, grouped into named "layers". Independent of the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists under Data. The plotting commands for this system (<strong>Plot stereo project</strong>, <strong>Plot VGP Project...</strong>) now live under <a href="#graphics">Graphics</a>, alongside the rest of the plotting commands.</p>
 
-      <div class="item">
+      <div class="item" id="project-manage">
         <div class="label">Load Project...</div>
         <div class="desc">Loads a project file into <code>self.project_entries</code> — and, if the file has a <code>#&nbsp;VGP</code> block (the newer 3-block format written by STARpaleomag_Py, see <a href="#stereoproject">reference</a> below), its VGP entries too, into <code>self.project_vgp_entries</code>, ready for <strong>Graphics&nbsp;→&nbsp;Plot VGP Project...</strong> without loading anything a second time. An older, plain (no <code>#</code> block markers) project file loads exactly as before, with no VGP entries.</div>
       </div>
@@ -714,11 +714,11 @@
         <div class="label">Init Project</div>
         <div class="desc">Clears <code>self.project_entries</code>.</div>
       </div>
-      <div class="item">
+      <div class="item" id="project-fisher">
         <div class="label">Fisher Project...</div>
         <div class="desc">Computes a Fisher mean for each group of <em>consecutive</em> same-layer lines in <code>self.project_entries</code> (not a global group-by-layer — a layer name reappearing later in the file after a different layer starts a separate group), with an optional angular filter. Prints ready-to-paste project-file lines for each mean. Port of <code>fisherproject</code>.</div>
       </div>
-      <div class="item">
+      <div class="item" id="project-help">
         <div class="label">Help Project (colors & symbols)</div>
         <div class="desc">Displays the project file's column layout, the recognized symbol codes (<code>c</code>/<code>t</code>/<code>e</code>/<code>l</code>/<code>s</code>), and the accepted color formats — an <code>R_G_B</code> triplet (0–255 each) or one of about twenty named colors (<code>red</code>, <code>blue</code>, <code>skyblue</code>…).</div>
       </div>
@@ -729,7 +729,7 @@
       <h2>Pmag Utilities <span class="menu-tag">VGP, rotation, correction toolbox</span></h2>
       <p class="menu-desc">A large collection of mostly-independent, mostly-interactive calculators (native ports of <code>pmagoutils.f</code>, via <code>stereo_pmagutils.py</code>), organized as submenus matching the original Fortran's own groupings. Each one is self-contained — none of them read or write the Data/Project working lists, with the few exceptions noted below.</p>
 
-      <h3 class="group">VGP conversions</h3>
+      <h3 class="group" id="pu-vgp">VGP conversions</h3>
       <div class="item">
         <div class="label">Direction to VGP...</div>
         <div class="desc">Given a site lat/lon, converts typed dec/inc (optionally with α95) into a VGP lat/lon (and dm/dp, if α95 given), one at a time in a loop.</div>
@@ -747,7 +747,7 @@
         <div class="desc">Batch version of the above, with a prompt for whether the file gives VGP lat-then-lon or lon-then-lat when no header names the columns.</div>
       </div>
 
-      <h3 class="group">Rotation/flattening tests</h3>
+      <h3 class="group" id="pu-rotation">Rotation/flattening tests</h3>
       <div class="item">
         <div class="label">Rotation obs=DI  Pole Ref...</div>
         <div class="desc">Given an observed direction (dec/inc/α95), a site lat/lon, and a reference paleopole (lat/lon/p95), computes the direction expected from that pole, plus the rotation and flattening (with uncertainties) needed to reconcile the observed direction with it.</div>
@@ -761,7 +761,7 @@
         <div class="desc">Rotation and pole displacement between an observed pole and a reference pole (each lat/lon/A95), evaluated at a given site.</div>
       </div>
 
-      <h3 class="group">Paleolatitude</h3>
+      <h3 class="group" id="pu-paleolat">Paleolatitude</h3>
       <div class="item">
         <div class="label">Paleolatitude at one site (file)...</div>
         <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file.</div>
@@ -771,7 +771,7 @@
         <div class="desc">Converts a single inclination + α95 directly to a paleolatitude with min/max error bounds, without needing a full APWP file.</div>
       </div>
 
-      <h3 class="group">GMT rotation export</h3>
+      <h3 class="group" id="pu-gmt">GMT rotation export</h3>
       <div class="item">
         <div class="label">Rotation vers GMT plot...</div>
         <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script.</div>
@@ -781,7 +781,7 @@
         <div class="desc">Static help text describing the file formats <strong>Rotation vers GMT plot</strong> expects.</div>
       </div>
 
-      <h3 class="group">Site Map</h3>
+      <h3 class="group" id="pu-sitemap">Site Map</h3>
       <div class="item">
         <div class="label">prmag to KML (Google Earth)...</div>
         <div class="desc">Reads a <code>.prmag</code> file (its own minimal reader, specimen/site/lat/lon plus strike/dip/geologic type/lithology/age from the site's first specimen) and writes a Google Earth KML — one placemark per site, coordinates averaged across the site's specimens, styled to match the original Fortran KML output (bold field labels, line breaks, the same <code>styleUrl</code>).</div>
@@ -799,7 +799,7 @@
         <div class="desc">Checkbutton toggling whether <strong>Plot sites</strong> attempts the Cartopy basemap at all.</div>
       </div>
 
-      <h3 class="group">Core/bedding corrections</h3>
+      <h3 class="group" id="pu-corr">Core/bedding corrections</h3>
       <div class="item">
         <div class="label">Core correction...</div>
         <div class="desc">Borehole/drill-core orientation correction: given the corer's own dip and strike, corrects each typed dec/inc for it.</div>
@@ -813,7 +813,7 @@
         <div class="desc">The inverse problem: given both the in-situ and the already tilt-corrected D/I for the same direction (typed, or a file of <code>d1 i1 d2 i2</code> rows), solves for the strike/dip that produces that exact correction.</div>
       </div>
 
-      <h3 class="group">Fold plunge</h3>
+      <h3 class="group" id="pu-fold">Fold plunge</h3>
       <div class="item">
         <div class="label">Fold plunge...</div>
         <div class="desc">Corrects a direction for a plunging fold axis, given the strike/dip and the fold's own azimuth/dip — either a single first-order correction, or a progressive/iterative one.</div>
@@ -823,7 +823,7 @@
         <div class="desc">Batch version: reads a file of (site, dec, inc, α95, strike-or-dipdir, dip, fold azimuth, fold dip) rows and replaces <strong>directions</strong> with the corrected results.</div>
       </div>
 
-      <h3 class="group">Euler rotation</h3>
+      <h3 class="group" id="pu-euler">Euler rotation</h3>
       <div class="item">
         <div class="label">DI Polar rotation...</div>
         <div class="desc">Rotates a typed dec/inc about a given Euler pole (lon/lat/angle), at a given site, one at a time in a loop.</div>
@@ -833,7 +833,7 @@
         <div class="desc">Batch version: rotates VGPs from a file, each row carrying its own Euler pole.</div>
       </div>
 
-      <h3 class="group">Paleointensity</h3>
+      <h3 class="group" id="pu-paleoint">Paleointensity</h3>
       <div class="item">
         <div class="label">mean paleointensity...</div>
         <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — which can now be a real <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side, matching the original Fortran's own three-row table. The old plain-format file keeps its original behavior: the whole file averaged in one shot, no selection step.</div>
@@ -851,7 +851,7 @@
         <div class="desc">Batch file relocation of paired direction+paleointensity data (site, age, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing.</div>
       </div>
 
-      <h3 class="group">IGRF</h3>
+      <h3 class="group" id="pu-igrf">IGRF</h3>
       <div class="item">
         <div class="label">valeur CMT IGRF...</div>
         <div class="desc">Computes the IGRF field (D, I, F, H, N, E, Z components) at a given lat/lon/year/altitude, via the <code>ppigrf</code> package. Reports clearly if <code>ppigrf</code> isn't installed rather than failing silently.</div>
@@ -861,7 +861,7 @@
         <div class="desc">Static help text for the IGRF calculator above.</div>
       </div>
 
-      <h3 class="group">Other</h3>
+      <h3 class="group" id="pu-other">Other</h3>
       <div class="item">
         <div class="label">conversion units...</div>
         <div class="desc">Menu-driven unit converter for common magnetic units: Am²↔emu, Am²/kg↔emu/g, A/m↔emu/cc, Tesla/µTesla↔A/m.</div>

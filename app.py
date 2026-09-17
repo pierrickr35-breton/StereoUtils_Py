@@ -138,6 +138,13 @@ class StereoUtilsApp:
         # matplotlib du menu Site Map).
         self.sitemap_basemap = tk.BooleanVar(value=True)
 
+        # Ancre du guide utilisateur correspondant au DERNIER item de menu
+        # invoque (voir _menu_cmd/ouvrir_user_guide, meme mecanisme que
+        # STARpaleomag_Py/AMS_Py) - None tant qu'aucun menu de contenu n'a
+        # encore ete utilise, auquel cas le guide s'ouvre sur sa page
+        # d'accueil.
+        self._help_anchor = None
+
         self._setup_menu()
         self._setup_shortcuts()
 
@@ -436,12 +443,20 @@ class StereoUtilsApp:
         app.ouvrir_user_guide (meme principe : un fichier HTML STATIQUE
         livre EN LOCAL avec l'appli, voir _resource_path,
         help/StereoUtils_Py_Guide.html) - demande explicite utilisateur
-        ("is it possible to write a guide for stereo")."""
+        ("is it possible to write a guide for stereo").
+
+        Saute directement au bloc du DERNIER menu de contenu utilise
+        (self._help_anchor, voir _menu_cmd) - ouvre la page d'accueil du
+        guide (aucune ancre) tant qu'aucun item de menu de contenu n'a
+        encore ete invoque dans cette session."""
         guide_path = _resource_path("help", "StereoUtils_Py_Guide.html")
         if not os.path.exists(guide_path):
             messagebox.showerror("Error", f"User guide not found:\n{guide_path}")
             return
-        webbrowser.open(f"file://{guide_path}")
+        url = f"file://{guide_path}"
+        if self._help_anchor:
+            url += f"#{self._help_anchor}"
+        webbrowser.open(url)
 
     # ------------------------------------------------------------------
     # Menu
@@ -453,6 +468,19 @@ class StereoUtilsApp:
         (voir AMS_Py/STARpaleomag_Py app._labeled - meme raison, voir
         commentaire pres de SHORTCUTS)."""
         return f"{text}    ({SHORTCUTS[shortcut_name][0]})"
+
+    def _menu_cmd(self, anchor, func):
+        """Enveloppe `func` (la vraie commande d'un item de menu) pour
+        enregistrer `anchor` comme dernier contexte d'aide AVANT de
+        l'executer - meme mecanisme que STARpaleomag_Py/AMS_Py
+        app._menu_cmd. `anchor` correspond a l'id du BLOC (separateur a
+        separateur, ou du sous-menu entier pour Pmag Utilities/PmagPy-
+        tools/K-T/Hysteresis) dans help/StereoUtils_Py_Guide.html ;
+        plusieurs items d'un meme bloc partagent la meme ancre."""
+        def wrapped(*args, **kwargs):
+            self._help_anchor = anchor
+            return func(*args, **kwargs)
+        return wrapped
 
     def _setup_shortcuts(self):
         """Lie reellement les raccourcis affiches dans les libelles de
@@ -469,187 +497,240 @@ class StereoUtilsApp:
         data_menu = tk.Menu(menubar, tearoff=0)
 
         load_menu = tk.Menu(data_menu, tearoff=0)
-        load_menu.add_command(label="File [D-I]...", command=self.load_di_file)
-        load_menu.add_command(label="File [D-I_TC]...", command=self.load_di_tc_file)
-        load_menu.add_command(label="File [D-I-a95]...", command=self.load_di_a95_file)
-        load_menu.add_command(label="File [D-I-a95_TC]...", command=self.load_di_a95_tc_file)
+        load_menu.add_command(label="File [D-I]...", command=self._menu_cmd("data-load", self.load_di_file))
+        load_menu.add_command(label="File [D-I_TC]...", command=self._menu_cmd("data-load", self.load_di_tc_file))
+        load_menu.add_command(label="File [D-I-a95]...", command=self._menu_cmd("data-load", self.load_di_a95_file))
+        load_menu.add_command(
+            label="File [D-I-a95_TC]...", command=self._menu_cmd("data-load", self.load_di_a95_tc_file))
         load_menu.add_separator()
-        load_menu.add_command(label="File [great circle]...", command=self.load_great_circle_file)
+        load_menu.add_command(
+            label="File [great circle]...", command=self._menu_cmd("data-load", self.load_great_circle_file))
         data_menu.add_cascade(label="Load from file", menu=load_menu)
+        data_menu.add_separator()
 
         manual_menu = tk.Menu(data_menu, tearoff=0)
-        manual_menu.add_command(label="Manual [D-I]...", command=self.enter_di_manual)
-        manual_menu.add_command(label="Manual [D-I-a95]...", command=self.enter_di_a95_manual)
-        manual_menu.add_command(label="Manual [great circle]...", command=self.enter_great_circle_manual)
+        manual_menu.add_command(label="Manual [D-I]...", command=self._menu_cmd("data-manual", self.enter_di_manual))
+        manual_menu.add_command(
+            label="Manual [D-I-a95]...", command=self._menu_cmd("data-manual", self.enter_di_a95_manual))
+        manual_menu.add_command(
+            label="Manual [great circle]...", command=self._menu_cmd("data-manual", self.enter_great_circle_manual))
         data_menu.add_cascade(label="Manual entry", menu=manual_menu)
+        data_menu.add_separator()
 
-        data_menu.add_command(label="List-data", command=self.list_data)
+        data_menu.add_command(label="List-data", command=self._menu_cmd("data-edit", self.list_data))
 
         delete_menu = tk.Menu(data_menu, tearoff=0)
-        delete_menu.add_command(label="Delete D-I line...", command=self.delete_di_line)
-        delete_menu.add_command(label="Delete D-I-a95 line...", command=self.delete_mean_line)
-        delete_menu.add_command(label="Delete GC line...", command=self.delete_gc_line)
+        delete_menu.add_command(label="Delete D-I line...", command=self._menu_cmd("data-edit", self.delete_di_line))
+        delete_menu.add_command(
+            label="Delete D-I-a95 line...", command=self._menu_cmd("data-edit", self.delete_mean_line))
+        delete_menu.add_command(label="Delete GC line...", command=self._menu_cmd("data-edit", self.delete_gc_line))
         data_menu.add_cascade(label="Delete", menu=delete_menu)
 
-        data_menu.add_command(label="Initialize...", command=self.initialize_data)
+        data_menu.add_command(label="Initialize...", command=self._menu_cmd("data-edit", self.initialize_data))
         data_menu.add_separator()
-        data_menu.add_command(label="Help Data (file headers)", command=self.help_data)
+        data_menu.add_command(
+            label="Help Data (file headers)", command=self._menu_cmd("data-help", self.help_data))
         menubar.add_cascade(label="Data", menu=data_menu)
 
         self._iproj_var = tk.IntVar(value=self.iproj)
         proj_menu = tk.Menu(menubar, tearoff=0)
-        proj_menu.add_command(label="Plot stereo", command=self.plot_screen)
-        proj_menu.add_command(label="Plot stereo project", command=self.plot_project)
-        proj_menu.add_command(label="Plot VGPs on Map", command=self.plot_vgps_on_map)
-        proj_menu.add_command(label="Plot VGP Project...", command=self.plot_vgp_project)
-        proj_menu.add_command(label="Clear Screen", command=self.clear_screen)
-        proj_menu.add_command(label="Graph title...", command=self.set_graph_title)
+        proj_menu.add_command(label="Plot stereo", command=self._menu_cmd("graphics-plot", self.plot_screen))
+        proj_menu.add_command(
+            label="Plot stereo project", command=self._menu_cmd("graphics-plot", self.plot_project))
+        proj_menu.add_command(
+            label="Plot VGPs on Map", command=self._menu_cmd("graphics-plot", self.plot_vgps_on_map))
+        proj_menu.add_command(
+            label="Plot VGP Project...", command=self._menu_cmd("graphics-plot", self.plot_vgp_project))
+        proj_menu.add_command(label="Clear Screen", command=self._menu_cmd("graphics-plot", self.clear_screen))
+        proj_menu.add_command(label="Graph title...", command=self._menu_cmd("graphics-plot", self.set_graph_title))
         proj_menu.add_separator()
         proj_menu.add_radiobutton(
             label="Stereographic (Wulff)", variable=self._iproj_var, value=0,
-            command=lambda: self._set_iproj(0))
+            command=self._menu_cmd("graphics-proj", lambda: self._set_iproj(0)))
         proj_menu.add_radiobutton(
             label="Equal area (Schmidt)", variable=self._iproj_var, value=1,
-            command=lambda: self._set_iproj(1))
+            command=self._menu_cmd("graphics-proj", lambda: self._set_iproj(1)))
+        proj_menu.add_command(
+            label="Pole of projection...", command=self._menu_cmd("graphics-proj", self.set_pole_projection))
+        proj_menu.add_command(label="Diameter...", command=self._menu_cmd("graphics-proj", self.set_diameter))
+        proj_menu.add_command(
+            label="Symbol size & color...", command=self._menu_cmd("graphics-proj", self.set_symbol_size_color))
         proj_menu.add_separator()
-        proj_menu.add_command(label="Pole of projection...", command=self.set_pole_projection)
-        proj_menu.add_command(label="Diameter...", command=self.set_diameter)
-        proj_menu.add_command(label="Symbol size & color...", command=self.set_symbol_size_color)
-        proj_menu.add_separator()
-        proj_menu.add_command(label="Export SVG...", command=self.export_svg)
+        proj_menu.add_command(label="Export SVG...", command=self._menu_cmd("graphics-svg", self.export_svg))
         menubar.add_cascade(label="Graphics", menu=proj_menu)
 
         stats_menu = tk.Menu(menubar, tearoff=0)
-        stats_menu.add_command(label="Fisher Statistics...", command=self.stat_fisher_statistics)
-        stats_menu.add_command(label="Fisher Dir+GC...", command=self.stat_fisher_dir_gc)
-        stats_menu.add_command(label="Fisher recursive...", command=self.stat_fisher_recursive)
-        stats_menu.add_command(label="St Dev dipole...", command=self.stat_stddip)
-        stats_menu.add_command(label="Fisher Strati", command=self.stat_strati)
-        stats_menu.add_command(label="progressive Fold test...", command=self.stat_foldtest)
-        stats_menu.add_command(label="Mean Inclination only", command=self.stat_meaninc)
-        stats_menu.add_command(label="smallcircles Intersect", command=self.stat_intersect)
-        stats_menu.add_command(label="Reversal angle...", command=self.stat_reversal_angle)
-        stats_menu.add_command(label="difference angle...", command=self.stat_diff_angle)
+        stats_menu.add_command(
+            label="Fisher Statistics...", command=self._menu_cmd("statistics-fisher", self.stat_fisher_statistics))
+        stats_menu.add_command(
+            label="Fisher Dir+GC...", command=self._menu_cmd("statistics-fisher", self.stat_fisher_dir_gc))
+        stats_menu.add_command(
+            label="Fisher recursive...", command=self._menu_cmd("statistics-fisher", self.stat_fisher_recursive))
+        stats_menu.add_separator()
+        stats_menu.add_command(label="Fisher Strati", command=self._menu_cmd("statistics-strati", self.stat_strati))
+        stats_menu.add_command(
+            label="progressive Fold test...", command=self._menu_cmd("statistics-strati", self.stat_foldtest))
+        stats_menu.add_separator()
+        stats_menu.add_command(
+            label="Mean Inclination only", command=self._menu_cmd("statistics-inc", self.stat_meaninc))
+        stats_menu.add_command(
+            label="smallcircles Intersect", command=self._menu_cmd("statistics-inc", self.stat_intersect))
+        stats_menu.add_separator()
+        stats_menu.add_command(
+            label="angular departure from a specific direction...",
+            command=self._menu_cmd("statistics-angle", self.stat_stddip))
+        stats_menu.add_command(
+            label="Reversal angle...", command=self._menu_cmd("statistics-angle", self.stat_reversal_angle))
+        stats_menu.add_command(
+            label="difference angle...", command=self._menu_cmd("statistics-angle", self.stat_diff_angle))
         menubar.add_cascade(label="Statistics", menu=stats_menu)
 
         project_menu = tk.Menu(menubar, tearoff=0)
-        project_menu.add_command(label="Load Project...", command=self.load_project)
-        project_menu.add_command(label="Export to Project", command=self.export_to_project)
-        project_menu.add_command(label="List Project", command=self.list_project)
-        project_menu.add_command(label="Init Project", command=self.init_project)
+        project_menu.add_command(label="Load Project...", command=self._menu_cmd("project-manage", self.load_project))
+        project_menu.add_command(
+            label="Export to Project", command=self._menu_cmd("project-manage", self.export_to_project))
+        project_menu.add_command(label="List Project", command=self._menu_cmd("project-manage", self.list_project))
+        project_menu.add_command(label="Init Project", command=self._menu_cmd("project-manage", self.init_project))
         project_menu.add_separator()
-        project_menu.add_command(label="Fisher Project...", command=self.fisher_project)
+        project_menu.add_command(
+            label="Fisher Project...", command=self._menu_cmd("project-fisher", self.fisher_project))
         project_menu.add_separator()
-        project_menu.add_command(label="Help Project (colors & symbols)", command=self.help_project)
+        project_menu.add_command(
+            label="Help Project (colors & symbols)", command=self._menu_cmd("project-help", self.help_project))
         menubar.add_cascade(label="Project", menu=project_menu)
 
         pu_menu = tk.Menu(menubar, tearoff=0)
         vgp_menu = tk.Menu(pu_menu, tearoff=0)
-        vgp_menu.add_command(label="Direction to VGP...", command=self.pu_vgpc1)
-        vgp_menu.add_command(label="File: Direction to VGP...", command=self.pu_vgpc3)
-        vgp_menu.add_command(label="VGP to direction...", command=self.pu_vgpc2)
-        vgp_menu.add_command(label="File: VGP to direction...", command=self.pu_vgpc4)
+        vgp_menu.add_command(label="Direction to VGP...", command=self._menu_cmd("pu-vgp", self.pu_vgpc1))
+        vgp_menu.add_command(
+            label="File: Direction to VGP...", command=self._menu_cmd("pu-vgp", self.pu_vgpc3))
+        vgp_menu.add_command(label="VGP to direction...", command=self._menu_cmd("pu-vgp", self.pu_vgpc2))
+        vgp_menu.add_command(
+            label="File: VGP to direction...", command=self._menu_cmd("pu-vgp", self.pu_vgpc4))
         pu_menu.add_cascade(label="VGP conversions", menu=vgp_menu)
 
         rot_menu = tk.Menu(pu_menu, tearoff=0)
-        rot_menu.add_command(label="Rotation obs=DI  Pole Ref...", command=self.pu_paleotec)
-        rot_menu.add_command(label="Rotation obs=DI  DI Ref...", command=self.pu_paleodec)
-        rot_menu.add_command(label="Rotation obs=Pole Pole Ref...", command=self.pu_paleotec1)
+        rot_menu.add_command(
+            label="Rotation obs=DI  Pole Ref...", command=self._menu_cmd("pu-rotation", self.pu_paleotec))
+        rot_menu.add_command(
+            label="Rotation obs=DI  DI Ref...", command=self._menu_cmd("pu-rotation", self.pu_paleodec))
+        rot_menu.add_command(
+            label="Rotation obs=Pole Pole Ref...", command=self._menu_cmd("pu-rotation", self.pu_paleotec1))
         pu_menu.add_cascade(label="Rotation/flattening tests", menu=rot_menu)
 
         plat_menu = tk.Menu(pu_menu, tearoff=0)
-        plat_menu.add_command(label="Paleolatitude at one site (file)...", command=self.pu_paleolati)
-        plat_menu.add_command(label="Inclination a95 to Plat and err...", command=self.pu_paleolati2)
+        plat_menu.add_command(
+            label="Paleolatitude at one site (file)...", command=self._menu_cmd("pu-paleolat", self.pu_paleolati))
+        plat_menu.add_command(
+            label="Inclination a95 to Plat and err...", command=self._menu_cmd("pu-paleolat", self.pu_paleolati2))
         pu_menu.add_cascade(label="Paleolatitude", menu=plat_menu)
 
         gmt_menu = tk.Menu(pu_menu, tearoff=0)
-        gmt_menu.add_command(label="Rotation vers GMT plot...", command=self.pu_rota2gmt)
-        gmt_menu.add_command(label="Aide Rotation", command=self.pu_helprota)
+        gmt_menu.add_command(
+            label="Rotation vers GMT plot...", command=self._menu_cmd("pu-gmt", self.pu_rota2gmt))
+        gmt_menu.add_command(label="Aide Rotation", command=self._menu_cmd("pu-gmt", self.pu_helprota))
         pu_menu.add_cascade(label="GMT rotation export", menu=gmt_menu)
 
         sitemap_menu = tk.Menu(pu_menu, tearoff=0)
-        sitemap_menu.add_command(label="prmag to KML (Google Earth)...", command=self.pu_sitemap_kml)
-        sitemap_menu.add_command(label="prmag to GMT map script...", command=self.pu_sitemap_gmt)
-        sitemap_menu.add_command(label="Plot sites (matplotlib)...", command=self.pu_sitemap_plot)
+        sitemap_menu.add_command(
+            label="prmag to KML (Google Earth)...", command=self._menu_cmd("pu-sitemap", self.pu_sitemap_kml))
+        sitemap_menu.add_command(
+            label="prmag to GMT map script...", command=self._menu_cmd("pu-sitemap", self.pu_sitemap_gmt))
+        sitemap_menu.add_command(
+            label="Plot sites (matplotlib)...", command=self._menu_cmd("pu-sitemap", self.pu_sitemap_plot))
         sitemap_menu.add_checkbutton(
-            label="Basic basemap (coastlines, roads, cities)", variable=self.sitemap_basemap)
+            label="Basic basemap (coastlines, roads, cities)", variable=self.sitemap_basemap,
+            command=self._menu_cmd("pu-sitemap", lambda: None))
         pu_menu.add_cascade(label="Site Map", menu=sitemap_menu)
 
         core_menu = tk.Menu(pu_menu, tearoff=0)
-        core_menu.add_command(label="Core correction...", command=self.pu_core1)
-        core_menu.add_command(label="Bedding correction...", command=self.pu_core2)
-        core_menu.add_command(label="inverseBedding cor...", command=self.pu_invbedding)
+        core_menu.add_command(label="Core correction...", command=self._menu_cmd("pu-corr", self.pu_core1))
+        core_menu.add_command(label="Bedding correction...", command=self._menu_cmd("pu-corr", self.pu_core2))
+        core_menu.add_command(label="inverseBedding cor...", command=self._menu_cmd("pu-corr", self.pu_invbedding))
         pu_menu.add_cascade(label="Core/bedding corrections", menu=core_menu)
 
         fold_menu = tk.Menu(pu_menu, tearoff=0)
-        fold_menu.add_command(label="Fold plunge...", command=self.pu_foldplunge)
-        fold_menu.add_command(label="File Fold plunge...", command=self.pu_foldfile)
+        fold_menu.add_command(label="Fold plunge...", command=self._menu_cmd("pu-fold", self.pu_foldplunge))
+        fold_menu.add_command(label="File Fold plunge...", command=self._menu_cmd("pu-fold", self.pu_foldfile))
         pu_menu.add_cascade(label="Fold plunge", menu=fold_menu)
 
         euler_menu = tk.Menu(pu_menu, tearoff=0)
-        euler_menu.add_command(label="DI Polar rotation...", command=self.pu_rotmag)
-        euler_menu.add_command(label="VGP Plate rotation...", command=self.pu_vgp_plate_rotation)
+        euler_menu.add_command(label="DI Polar rotation...", command=self._menu_cmd("pu-euler", self.pu_rotmag))
+        euler_menu.add_command(
+            label="VGP Plate rotation...", command=self._menu_cmd("pu-euler", self.pu_vgp_plate_rotation))
         pu_menu.add_cascade(label="Euler rotation", menu=euler_menu)
 
         pal_menu = tk.Menu(pu_menu, tearoff=0)
-        pal_menu.add_command(label="mean paleointensity...", command=self.pu_meanpal)
-        pal_menu.add_command(label="VDM and VADM...", command=self.pu_vidimo)
-        pal_menu.add_command(label="VDM to Intensity...", command=self.pu_relocate)
-        pal_menu.add_command(label="Relocate D I F...", command=self.pu_relocatevar)
+        pal_menu.add_command(label="mean paleointensity...", command=self._menu_cmd("pu-paleoint", self.pu_meanpal))
+        pal_menu.add_command(label="VDM and VADM...", command=self._menu_cmd("pu-paleoint", self.pu_vidimo))
+        pal_menu.add_command(label="VDM to Intensity...", command=self._menu_cmd("pu-paleoint", self.pu_relocate))
+        pal_menu.add_command(
+            label="Relocate D I F...", command=self._menu_cmd("pu-paleoint", self.pu_relocatevar))
         pu_menu.add_cascade(label="Paleointensity", menu=pal_menu)
 
         igrf_menu = tk.Menu(pu_menu, tearoff=0)
-        igrf_menu.add_command(label="valeur CMT IGRF...", command=self.pu_igrf)
-        igrf_menu.add_command(label="Help calcul IGRF", command=self.pu_helpigrf)
+        igrf_menu.add_command(label="valeur CMT IGRF...", command=self._menu_cmd("pu-igrf", self.pu_igrf))
+        igrf_menu.add_command(label="Help calcul IGRF", command=self._menu_cmd("pu-igrf", self.pu_helpigrf))
         pu_menu.add_cascade(label="IGRF", menu=igrf_menu)
 
-        pu_menu.add_command(label="conversion units...", command=self.pu_convunit)
+        pu_menu.add_command(label="conversion units...", command=self._menu_cmd("pu-other", self.pu_convunit))
         pu_menu.add_separator()
-        pu_menu.add_command(label="test overprint...", command=self.pu_overprint)
-        pu_menu.add_command(label="test flattening...", command=self.pu_flatten)
+        pu_menu.add_command(label="test overprint...", command=self._menu_cmd("pu-other", self.pu_overprint))
+        pu_menu.add_command(label="test flattening...", command=self._menu_cmd("pu-other", self.pu_flatten))
         menubar.add_cascade(label="Pmag Utilities", menu=pu_menu)
 
         pmag_menu = tk.Menu(menubar, tearoff=0)
-        pmag_menu.add_command(label="Fisher", command=self.pmagpy_fisher)
+        pmag_menu.add_command(label="Fisher", command=self._menu_cmd("pmagpy", self.pmagpy_fisher))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Bootstrap ellipse", command=self.pmagpy_bootstrap_ellipse)
+        pmag_menu.add_command(
+            label="Bootstrap ellipse", command=self._menu_cmd("pmagpy", self.pmagpy_bootstrap_ellipse))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Find Elongation", command=self.find_elongation)
+        pmag_menu.add_command(label="Find Elongation", command=self._menu_cmd("pmagpy", self.find_elongation))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Reversal antipodality", command=self.test_reversal_antipodal)
+        pmag_menu.add_command(
+            label="Reversal antipodality", command=self._menu_cmd("pmagpy", self.test_reversal_antipodal))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Test common mean", command=self.test_common_mean)
+        pmag_menu.add_command(label="Test common mean", command=self._menu_cmd("pmagpy", self.test_common_mean))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Fold Test", command=self.fold_test)
+        pmag_menu.add_command(label="Fold Test", command=self._menu_cmd("pmagpy", self.fold_test))
         pmag_menu.add_separator()
-        pmag_menu.add_command(label="Mean Inclination", command=self.mean_inclination)
+        pmag_menu.add_command(label="Mean Inclination", command=self._menu_cmd("pmagpy", self.mean_inclination))
         menubar.add_cascade(label="PmagPy-tools", menu=pmag_menu)
 
         kt_menu = tk.Menu(menubar, tearoff=0)
-        kt_menu.add_command(label="Open .CUR/.CLW File...", command=self.kt_open_file)
-        kt_menu.add_command(label="Open Sample List...", command=self.kt_open_sample_list)
-        kt_menu.add_command(label="Select File from List...", command=self.kt_select_from_list)
+        kt_menu.add_command(label="Open .CUR/.CLW File...", command=self._menu_cmd("kt", self.kt_open_file))
+        kt_menu.add_command(
+            label="Open Sample List...", command=self._menu_cmd("kt", self.kt_open_sample_list))
+        kt_menu.add_command(
+            label="Select File from List...", command=self._menu_cmd("kt", self.kt_select_from_list))
         kt_menu.add_separator()
-        kt_menu.add_command(label="Furnace Correction", command=self.kt_apply_furnace_correction)
-        kt_menu.add_command(label="Normalize by Mass", command=self.kt_normalize_by_mass)
-        kt_menu.add_command(label="Normalize by Volume", command=self.kt_normalize_by_volume)
+        kt_menu.add_command(
+            label="Furnace Correction", command=self._menu_cmd("kt", self.kt_apply_furnace_correction))
+        kt_menu.add_command(label="Normalize by Mass", command=self._menu_cmd("kt", self.kt_normalize_by_mass))
+        kt_menu.add_command(label="Normalize by Volume", command=self._menu_cmd("kt", self.kt_normalize_by_volume))
         kt_menu.add_separator()
-        kt_menu.add_command(label="Curie Point (2nd derivative)", command=self.kt_curie_point)
+        kt_menu.add_command(
+            label="Curie Point (2nd derivative)", command=self._menu_cmd("kt", self.kt_curie_point))
         kt_menu.add_separator()
-        kt_menu.add_command(label="Plot K-T", command=self.kt_plot)
+        kt_menu.add_command(label="Plot K-T", command=self._menu_cmd("kt", self.kt_plot))
         menubar.add_cascade(label="K-T", menu=kt_menu)
 
         hyst_menu = tk.Menu(menubar, tearoff=0)
-        hyst_menu.add_command(label="Open AGM Sample List...", command=self.hyst_open_agm_list)
-        hyst_menu.add_command(label="Open VSM Sample List...", command=self.hyst_open_vsm_list)
-        hyst_menu.add_command(label="Select Sample to Plot...", command=self.hyst_select_from_list)
+        hyst_menu.add_command(
+            label="Open AGM Sample List...", command=self._menu_cmd("hysteresis", self.hyst_open_agm_list))
+        hyst_menu.add_command(
+            label="Open VSM Sample List...", command=self._menu_cmd("hysteresis", self.hyst_open_vsm_list))
+        hyst_menu.add_command(
+            label="Select Sample to Plot...", command=self._menu_cmd("hysteresis", self.hyst_select_from_list))
         hyst_menu.add_separator()
-        hyst_menu.add_command(label="Open VFTB File...", command=self.hyst_open_vftb_file)
+        hyst_menu.add_command(
+            label="Open VFTB File...", command=self._menu_cmd("hysteresis", self.hyst_open_vftb_file))
         hyst_menu.add_separator()
-        hyst_menu.add_command(label="Paramagnetic Fit Threshold...", command=self.hyst_set_valsat)
+        hyst_menu.add_command(
+            label="Paramagnetic Fit Threshold...", command=self._menu_cmd("hysteresis", self.hyst_set_valsat))
         hyst_menu.add_checkbutton(
             label=self._labeled("Normalize Plot", "hystnorm"),
-            variable=self.hyst_normalize, command=self.hyst_refresh_plot)
+            variable=self.hyst_normalize, command=self._menu_cmd("hysteresis", self.hyst_refresh_plot))
         menubar.add_cascade(label="Hysteresis", menu=hyst_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
