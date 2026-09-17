@@ -642,7 +642,7 @@
       </div>
       <div class="item" id="graphics-svg">
         <div class="label">Export SVG...</div>
-        <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the on-screen Figure, no separate export code needed.</div>
+        <div class="desc">Exports whichever plot is currently displayed to an SVG file — matplotlib writes it directly from the on-screen Figure, no separate export code needed. For <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is tagged with that layer's name (<code>Artist.set_gid</code>) — equivalent of the original Fortran's <code>newlayer</code> — so Illustrator's "Create Layers from top-level groups" SVG import reconstructs one named layer per project layer, exactly as it did before this app was ported to matplotlib.</div>
       </div>
     </section>
 

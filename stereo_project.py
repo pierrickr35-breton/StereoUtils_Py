@@ -375,6 +375,12 @@ def draw_project(
         if e.layer != layer0:
             layer0 = e.layer
             prev_point = None
+            # Equivalent de `newlayer(plotdir(ikk).layer)` (plotstereo.f95) -
+            # demande explicite utilisateur ("mon exportation svg anterieure
+            # qui gardait les calques") : voir PlotContext.set_gid pour le
+            # detail du mecanisme (Artist.set_gid plutot que reecrire
+            # </g>/<g id=...> a la main).
+            ctx.set_gid(layer0)
         ir, ig, ib = decode_color(e.rgb)
         ctx.newpencol(ir, ig, ib, ir, ig, ib)
         if e.type == "m":
@@ -422,6 +428,7 @@ def draw_project(
             ityp = open_t if ifl == 5 else filled_t
             ctx.symbol(v * r, u * r, e.size, ityp, -1)
     ctx.newpen(1)
+    ctx.set_gid(None)
 
 
 def build_project_figure(

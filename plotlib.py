@@ -20,6 +20,21 @@ multi-panneaux fixe de `boite()` (specifique a la fenetre AWE d'origine) -
 chaque graphique aura ici sa propre Figure matplotlib independante ;
 l'export SVG passe par `fig.savefig(path, format="svg")`, que matplotlib
 sait deja faire correctement a partir des memes appels PlotContext.
+
+EXCEPTION a "non porte" ci-dessus : `newlayer` (graphicsAWE.f95:1090,
+branche `plotsvg`) - demande explicite utilisateur ("mon exportation svg
+anterieure qui gardait les calques", au sujet du systeme Project/calques,
+voir stereo_project.draw_project) : le Fortran ecrit litteralement
+`</g>` puis `<g id="<nom du calque>">` a chaque changement de calque
+pendant le trace (pour qu'Illustrator reconstruise un calque par nom a
+l'import SVG). PlotContext.set_gid/`_gid` REPRODUIT le meme resultat via
+le mecanisme NATIF de matplotlib (`Artist.set_gid`, deja gere par son
+propre backend_svg) plutot que de reecrire </g>/<g id=...> a la main :
+chaque appel a plot/circl2/_polygon/plottxt tague l'artiste matplotlib
+qu'il cree avec le gid courant (self._gid, mis a jour par l'appelant via
+set_gid), ce qui produit exactement <g id="...">...</g> par artiste a
+l'export SVG - Illustrator retrouve un calque par NOM de gid tant que
+plusieurs artistes successifs partagent le meme (verifie import reel).
 """
 
 import math
@@ -79,6 +94,7 @@ class PlotContext:
         self.pen_color = "black"
         self.fill_color = "black"
         self.line_width = 1.0
+        self._gid: Optional[str] = None
 
     # ------------------------------------------------------------------
     # Etat du crayon : newpen / newpencol / thickn / clear
@@ -104,6 +120,15 @@ class PlotContext:
     def thickn(self, sizel: float) -> None:
         """Equivalent de `thickn(sizel)`."""
         self.line_width = sizel * 2
+
+    def set_gid(self, gid: Optional[str]) -> None:
+        """Equivalent de `newlayer` (voir docstring de module) : chaque
+        artiste matplotlib cree par les methodes ci-dessous (plot/circl2/
+        _polygon/plottxt) portera ce `gid` jusqu'au prochain appel - `None`
+        pour ne plus tagger (defaut). L'appelant (ex. stereo_project.
+        draw_project) appelle ceci a chaque changement de calque, comme le
+        Fortran appelait `newlayer(nom)`."""
+        self._gid = gid
 
     def clear(self) -> None:
         """Equivalent de `clear()` (sans le fond `boite()`, specifique a la
@@ -163,11 +188,14 @@ class PlotContext:
         elif mode == 3:
             self.x, self.y = tx, ty
         elif mode == 2:
-            self.ax.add_line(Line2D(
+            line = Line2D(
                 [self.x, tx], [self.y, ty],
                 color=self.pen_color, linewidth=self.line_width,
                 solid_capstyle="round",
-            ))
+            )
+            if self._gid:
+                line.set_gid(self._gid)
+            self.ax.add_line(line)
             self.x, self.y = tx, ty
 
     # ------------------------------------------------------------------
@@ -238,11 +266,14 @@ class PlotContext:
 
     def _polygon(self, pts_cm: List[Tuple[float, float]], filled: bool) -> None:
         pts = [self._transform(x, y) for x, y in pts_cm]
-        self.ax.add_patch(Polygon(
+        patch = Polygon(
             pts, closed=True,
             facecolor=self.fill_color if filled else "none",
             edgecolor=self.pen_color, linewidth=self.line_width,
-        ))
+        )
+        if self._gid:
+            patch.set_gid(self._gid)
+        self.ax.add_patch(patch)
 
     @staticmethod
     def _star_points(x: float, y: float, size: float) -> List[Tuple[float, float]]:
@@ -269,10 +300,13 @@ class PlotContext:
         cx, cy = self._transform(xc_cm, yc_cm)
         r_in = radius_cm / 2.54
         face = "none" if ifill in (0, 2) else (fill_override or self.fill_color)
-        self.ax.add_patch(Circle(
+        patch = Circle(
             (cx, cy), r_in, facecolor=face,
             edgecolor=self.pen_color, linewidth=self.line_width,
-        ))
+        )
+        if self._gid:
+            patch.set_gid(self._gid)
+        self.ax.add_patch(patch)
 
     # ------------------------------------------------------------------
     # Texte : plottxt / number
@@ -302,10 +336,13 @@ class PlotContext:
         scale = (height_cm / 2.54) / _CAP_HEIGHT
         path = TextPath((0, 0), text, size=1, prop=_FONT)
         transform = Affine2D().scale(scale).rotate_deg(angle).translate(tx, ty) + self.ax.transData
-        self.ax.add_patch(PathPatch(
+        patch = PathPatch(
             path, transform=transform, facecolor=self.pen_color,
             edgecolor="none", linewidth=0,
-        ))
+        )
+        if self._gid:
+            patch.set_gid(self._gid)
+        self.ax.add_patch(patch)
 
     def number(
         self, x_cm: float, y_cm: float, height_cm: float, realnb: float,
