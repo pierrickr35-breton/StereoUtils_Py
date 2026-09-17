@@ -232,3 +232,44 @@ def build_stereo_figure(
     ax.autoscale_view()
     fig.tight_layout()
     return fig
+
+
+def build_stereo_svg(
+    directions: List[Tuple[float, float, str]],
+    la: float = -90.0,
+    phi: float = 0.0,
+    iproj: int = 0,
+    dim: float = 21.0,
+    path_between_points: bool = False,
+    point_size: float = 0.3,
+    means: Optional[List[Tuple[float, float, float, str]]] = None,
+    great_circles: Optional[List[Tuple[float, float, float, float, float, float]]] = None,
+):
+    """Equivalent de `build_stereo_figure`, mais via SVGWriter (port fidele
+    du rendu SVG Fortran, voir svgwriter.py) plutot que matplotlib - meme
+    demande/meme raison que stereo_project.build_project_svg (PlotContext
+    dessine un artiste matplotlib PAR SEGMENT, jamais un objet unique ;
+    SVGWriter accumule les points consecutifs dans une seule <polyline>) -
+    demande explicite utilisateur ("can you do the same for Plot stereo
+    and its svg export").
+
+    N'est utilise QUE par app.export_svg quand le dernier trace affiche
+    est un Plot stereo (voir app._stereo_svg_state) - le rendu ECRAN
+    (canvas Tk) continue de passer par build_stereo_figure/matplotlib,
+    inchange.
+
+    Page/origine : MEMES constantes litterales que build_project_svg -
+    `plotdata` (stereograph.f:131-166, equivalent Fortran de "Plot
+    stereo") appelle `plots(1.,1.,fname)` puis `plot(u0,v0,-3)` avec
+    u0=7.4, v0=10.6, EXACTEMENT comme `plotproject` (memes valeurs,
+    verifie ligne a ligne contre les deux sources)."""
+    from svgwriter import SVGWriter
+    writer = SVGWriter(width_cm=20.0, height_cm=20.0)
+    writer.set_origin_px(90.0, 600.0)
+    writer.plot(7.4, 10.6, -3)
+    r = draw_stereo_net(writer, la, phi, iproj, dim)
+    draw_stereo_means(writer, means or [], r, la, phi, iproj)
+    draw_stereo_great_circles(writer, great_circles or [], r, la, phi, iproj)
+    draw_stereo_data(writer, directions, r, la, phi, iproj, path_between_points, point_size)
+    writer.plotnd()
+    return writer

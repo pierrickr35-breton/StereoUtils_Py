@@ -43,7 +43,7 @@ from stereo_selection import (
     read_di_a95_file, read_di_a95_tc_file,
     read_great_circle_file, read_text_lines, split_header,
 )
-from stereo_net import build_stereo_figure
+from stereo_net import build_stereo_figure, build_stereo_svg
 import stereo_pmagpy as sp
 import stereo_stats as ss
 import stereo_project as sproj
@@ -159,6 +159,14 @@ class StereoUtilsApp:
         # et repositionne par plot_project APRES son propre appel a
         # _redraw_canvas.
         self._project_svg_state = None
+        # Meme principe que _project_svg_state ci-dessus, pour "Plot
+        # stereo" (voir plot_screen) - demande explicite utilisateur
+        # ("can you do the same for Plot stereo and its svg export").
+        # export_svg utilise stereo_net.build_stereo_svg quand ceci n'est
+        # pas None. Les deux etats sont mutuellement exclusifs (chaque
+        # trace remet les DEUX a None via _redraw_canvas/_show_images
+        # avant de repositionner le sien).
+        self._stereo_svg_state = None
 
         self._setup_menu()
         self._setup_shortcuts()
@@ -303,6 +311,7 @@ class StereoUtilsApp:
         # reaffecte la valeur correcte juste APRES son propre appel a
         # cette methode.
         self._project_svg_state = None
+        self._stereo_svg_state = None  # meme principe, voir plot_screen
         self.root.update_idletasks()
         w = self.root.winfo_width()
         h = self.root.winfo_height()
@@ -325,6 +334,7 @@ class StereoUtilsApp:
         `fig=` compatible avec ce canvas) - empiles verticalement si
         plusieurs, meme motif que xygraph.py cote Starmac."""
         self._project_svg_state = None  # voir _redraw_canvas
+        self._stereo_svg_state = None
         if not files:
             self._afficher("(no plot produced)\n")
             return
@@ -361,6 +371,13 @@ class StereoUtilsApp:
         if self.graph_title:
             self.fig.axes[0].set_title(self.graph_title)
         self._redraw_canvas()
+        # Copie (pas une reference) - voir __init__/_project_svg_state et
+        # export_svg.
+        self._stereo_svg_state = (
+            list(self.directions), self.la, self.phi, self.iproj, self.dim,
+            self.path_between_points, self.point_size,
+            list(self.means), list(self.great_circles),
+        )
 
     def clear_screen(self):
         """Equivalent de `clrtty` (menu Graphics > Clear Screen, ex-menu
@@ -445,15 +462,21 @@ class StereoUtilsApp:
         canvas integre (`self.fig`, quel que soit le trace en cours -
         reseau stereo, projet, carte VGP...).
 
-        EXCEPTION pour Plot stereo project (voir self._project_svg_state,
-        mis a jour par plot_project/_redraw_canvas/_show_images) : rejoue
-        le trace via stereo_project.build_project_svg (SVGWriter, port
-        fidele du Fortran) plutot que self.fig.savefig() - demande
-        explicite utilisateur apres deux regressions constatees dans le
-        rendu matplotlib : les calques nommes ("mon exportation svg
-        anterieure qui gardait les calques") et les cercles de confiance
-        en un seul objet continu plutot qu'en segments separes ("now this
-        behavior has changed")."""
+        EXCEPTION pour Plot stereo et Plot stereo project (voir
+        self._stereo_svg_state/self._project_svg_state, mis a jour par
+        plot_screen/plot_project et remis a None par
+        _redraw_canvas/_show_images pour tout autre trace) : rejoue le
+        trace via stereo_net.build_stereo_svg/stereo_project.
+        build_project_svg (SVGWriter, port fidele du Fortran) plutot que
+        self.fig.savefig() - demande explicite utilisateur, d'abord pour
+        Plot stereo project (deux regressions constatees dans le rendu
+        matplotlib : calques nommes perdus et cercles de confiance en
+        segments separes plutot qu'un seul objet continu), puis "can you
+        do the same for Plot stereo and its svg export" - meme raison,
+        meme mecanisme, meme SVGWriter (draw_stereo_net/draw_stereo_data/
+        draw_stereo_means/draw_stereo_great_circles ne dessinent aucun
+        calque, contrairement a draw_project, donc rien d'autre a y
+        reproduire)."""
         if not self.fig.axes:
             messagebox.showwarning("No graphic", "Plot something first (e.g. Plot stereo).")
             return
@@ -468,6 +491,13 @@ class StereoUtilsApp:
             if self._project_svg_state is not None:
                 entries, la, phi, iproj, dim = self._project_svg_state
                 sproj.build_project_svg(entries, la=la, phi=phi, iproj=iproj, dim=dim).save(path)
+            elif self._stereo_svg_state is not None:
+                directions, la, phi, iproj, dim, path_between, psize, means, gcircles = self._stereo_svg_state
+                build_stereo_svg(
+                    directions, la=la, phi=phi, iproj=iproj, dim=dim,
+                    path_between_points=path_between, point_size=psize,
+                    means=means, great_circles=gcircles,
+                ).save(path)
             else:
                 self.fig.savefig(path, format="svg")
         except Exception:
