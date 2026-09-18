@@ -704,6 +704,14 @@
       <h2>Project <span class="menu-tag">multi-layer symbol/color system</span></h2>
       <p class="menu-desc">A separate in-memory list, <code>self.project_entries</code> — directions, means and great circles together, each with its own hand-editable symbol, color and size, grouped into named "layers". Independent of the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists under Data. The plotting commands for this system (<strong>Plot stereo project</strong>, <strong>Plot VGP Project...</strong>) now live under <a href="#graphics">Graphics</a>, alongside the rest of the plotting commands.</p>
 
+      <div class="callout">
+        <strong>Why layers?</strong> A "layer" is just a name shared by a run of consecutive entries — canonically one <strong>site</strong> when the file comes from STARpaleomag_Py's own "export results to Stereo_Py…" (which sets <code>layer</code> to the site's own 6-character code — see the <a href="#stereoproject">Stereo Project file format</a> reference below), but any grouping the project file's author finds useful works just as well: a formation, a locality, a polarity chron, a batch of specimens measured together. That grouping earns its keep in two places:
+        <ul style="margin:0.5rem 0 0 1.2rem; padding:0;">
+          <li><strong>Statistics</strong> — <strong>Fisher Project</strong> computes one Fisher mean per layer automatically, so re-deriving (or double-checking) a site mean from its constituent specimen directions is a single menu command, not a manual selection.</li>
+          <li><strong>Publication figures</strong> — <strong>Export SVG…</strong> writes each layer into its own named <code>&lt;g&gt;</code> (see below). Opened in Illustrator or Inkscape, that becomes one toggleable, independently selectable layer per site (or whatever the grouping was): hide a site to declutter an overlay of many, recolor one site's cluster without touching the others, or move a legend — all without re-plotting from StereoUtils_Py. This is exactly why the original Fortran wrote layers into its SVG output in the first place, and why re-flattening them (as a naive matplotlib export would) loses real editorial value, not just a cosmetic label.</li>
+        </ul>
+      </div>
+
       <div class="item" id="project-manage">
         <div class="label">Load Project...</div>
         <div class="desc">Loads a project file into <code>self.project_entries</code> — and, if the file has a <code>#&nbsp;VGP</code> block (the newer 3-block format written by STARpaleomag_Py, see <a href="#stereoproject">reference</a> below), its VGP entries too, into <code>self.project_vgp_entries</code>, ready for <strong>Graphics&nbsp;→&nbsp;Plot VGP Project...</strong> without loading anything a second time. An older, plain (no <code>#</code> block markers) project file loads exactly as before, with no VGP entries.</div>
