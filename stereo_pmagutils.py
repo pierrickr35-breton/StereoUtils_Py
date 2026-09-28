@@ -54,7 +54,9 @@ proprietaires non documentables sans exemple) :
   que le reste du port (transformation textbook standard, les deux
   implementations calculent la meme chose)."""
 
+import json
 import math
+import os
 from typing import List, NamedTuple, Optional, Sequence, Tuple
 
 from stereo_geometry import _angle, corpen, corfor, polere
@@ -375,6 +377,184 @@ def paleolati_from_file(
             row["paleolat"] = DEG(math.atan(0.5 * math.tan(RAD(dip))))
         rows.append(row)
     lines = ["age  vlat   vlon    a95    dec    dip    DP   plat   plat_min  plat_max"]
+    for r in rows:
+        if "dp" in r:
+            lines.append(
+                f"{r['age']:5.0f} {r['vgp_lat']:6.1f} {r['vgp_lon']:6.1f} {r['a95']:5.1f} "
+                f"{r['dec']:6.1f} {r['inc']:6.1f} {r['dp']:6.1f} {r['paleolat']:6.1f} "
+                f"{r['paleolat_min']:6.1f} {r['paleolat_max']:6.1f}"
+            )
+        else:
+            lines.append(
+                f"{r['age']:5.0f} {r['vgp_lat']:6.1f} {r['vgp_lon']:6.1f} {r['a95']:5.1f} "
+                f"{r['dec']:6.1f} {r['inc']:6.1f}   -   {r['paleolat']:6.1f}"
+            )
+    return "\n".join(lines) + "\n", rows
+
+
+# ---------------------------------------------------------------------------
+# Fichiers APWP multi-continents (Torsvik_APWPs.csv, Vaes_2023_APWP.txt) -
+# demande explicite utilisateur ("Finalement je vais utiliser (au choix) un
+# de ces deux fichiers ... aussi bien pour le menu paleolatitude que pour
+# rota_2_GMT. Le Fortran lisait deja le fichier Torsvik pour
+# paleolatitude") : `paleolati` (pmagoutils.f:5128-5244) lit deja
+# Torsvik_APWP.csv avec un choix de continent (cases 1-7, verifie ligne par
+# ligne ci-dessous) - PAS encore porte jusqu'ici (voir docstring de
+# paleolati_from_file : "pas les presets Torsvik... fichiers de reference
+# non fournis avec ce depot"), les fichiers etant maintenant fournis.
+#
+# Format de CHAQUE fichier VERIFIE en lisant les octets reels (pas suppose
+# depuis un docstring ou un exemple formate) :
+#   - Torsvik_APWPs.csv (Table 11 de Torsvik et al., 2012) : separateur
+#     BLANC malgre l'extension .csv, BOM UTF-8 en tete. Colonnes Age, N,
+#     A95 (partagees) puis (Plat,Plon) par continent, DANS CET ORDRE
+#     EXACT : North America, Europe, India, Amazonia, Australia,
+#     East Antarctica, Africa - ordre et indices de colonnes CROISES avec
+#     les 7 `read(21,*)` de paleolati (cases 1-7, ex. case(3)=India lit
+#     "age,x1,a95,x2,y2, vlat,vlon" = colonnes 0,1,2,3,4,7,8 -> vlat/vlon
+#     sont bien aux colonnes 7/8, confirme identique au calcul par index
+#     ci-dessous).
+#   - Vaes_2023_APWP.txt (Vaes et al., 2023) : separateur TAB, PAS de
+#     Fortran de reference (fichier recent, jamais lu par ce projet).
+#     Colonnes Window, Age, P95 (partagees) puis (Plon,Plat) par
+#     continent - ATTENTION ordre Plon/Plat INVERSE par rapport au
+#     fichier Torsvik ci-dessus. Signe moins en UTF-8 (U+2212 "−"),
+#     PAS le "-" ASCII habituel - confirme en lisant les octets bruts du
+#     fichier ; sans normalisation, `float()` leve ValueError sur TOUTE
+#     latitude/longitude negative (la quasi-totalite des poles de ce
+#     fichier).
+# ---------------------------------------------------------------------------
+
+_TORSVIK_APWPS_CSV_CONTINENTS = [
+    "North America", "Europe", "India", "Amazonia", "Australia", "East Antarctica", "Africa",
+]
+
+_VAES2023_CONTINENTS = [
+    "North America", "South America", "Eurasia", "India", "Australia", "Antarctica", "Pacific", "Iberia",
+]
+
+
+def read_torsvik_apwps_csv(path: str, continent: str) -> List[Tuple[float, float, float, float]]:
+    """(age, pole_lat, pole_lon, a95) pour `continent`, tries par age
+    croissant - voir docstring de section pour le format/les indices de
+    colonnes (verifies contre pmagoutils.f). Volontairement SANS le
+    decalage vlat=-vlat/vlon+180 que `paleolati` applique - c'est un
+    ajustement propre a l'usage paleolatitude (voir
+    paleolati_from_apwp_table), pas une propriete du fichier lui-meme."""
+    if continent not in _TORSVIK_APWPS_CSV_CONTINENTS:
+        raise ValueError(
+            f"{continent!r} not found in Torsvik_APWPs.csv - available: "
+            + ", ".join(_TORSVIK_APWPS_CSV_CONTINENTS))
+    i = _TORSVIK_APWPS_CSV_CONTINENTS.index(continent)
+    i_lat, i_lon = 3 + 2 * i, 3 + 2 * i + 1
+    with open(path, "r", encoding="utf-8-sig") as f:
+        lines = f.read().splitlines()
+    header_line = lines[2] if len(lines) > 2 else ""
+    for name in _TORSVIK_APWPS_CSV_CONTINENTS:
+        if name not in header_line:
+            raise ValueError(f"{path}: expected continent header not found ({name!r}) - unexpected file format")
+    rows = []
+    for line in lines[4:]:
+        parts = line.split()
+        if len(parts) <= max(i_lat, i_lon):
+            continue
+        try:
+            age = float(parts[0])
+            a95 = float(parts[2])
+            plat, plon = float(parts[i_lat]), float(parts[i_lon])
+        except ValueError:
+            continue
+        rows.append((age, plat, plon, a95))
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def read_vaes2023_apwp(path: str, continent: str) -> List[Tuple[float, float, float, float]]:
+    """(age, pole_lat, pole_lon, p95) pour `continent`, tries par age
+    croissant - voir docstring de section (separateur TAB, ordre
+    Plon/Plat, signe moins UTF-8 a normaliser). P95 est une colonne
+    UNIQUE partagee entre tous les continents (pas de P95 par continent
+    dans ce fichier)."""
+    with open(path, "r", encoding="utf-8") as f:
+        lines = f.read().splitlines()
+    if len(lines) < 3:
+        raise ValueError(f"{path}: file too short")
+    names = [t.strip() for t in lines[0].lstrip("#").split("\t")]
+    if continent not in names:
+        raise ValueError(
+            f"{continent!r} not found in Vaes_2023_APWP.txt - available: "
+            + ", ".join(_VAES2023_CONTINENTS))
+    i = names.index(continent) - 2  # -2 : "Empty Cell"/"Empty" (Window/Age) en tete de cette ligne
+    if i < 0:
+        raise ValueError(f"{path}: unexpected header format")
+    i_lon, i_lat = 3 + 2 * i, 3 + 2 * i + 1
+    rows = []
+    for line in lines[2:]:
+        if not line.strip():
+            continue
+        parts = [p.replace("−", "-").strip() for p in line.split("\t")]
+        if len(parts) <= max(i_lon, i_lat):
+            continue
+        try:
+            age = float(parts[0])
+            p95 = float(parts[2])
+            plon, plat = float(parts[i_lon]), float(parts[i_lat])
+        except ValueError:
+            continue
+        rows.append((age, plat, plon, p95))
+    rows.sort(key=lambda r: r[0])
+    return rows
+
+
+def apwp_table_continents(path: str) -> List[str]:
+    """Liste des continents/cratons valides pour `path` (dispatch par nom
+    de fichier - voir read_apwp_table)."""
+    if "vaes" in os.path.basename(path).lower():
+        return list(_VAES2023_CONTINENTS)
+    return list(_TORSVIK_APWPS_CSV_CONTINENTS)
+
+
+def read_apwp_table(path: str, continent: str) -> List[Tuple[float, float, float, float]]:
+    """Dispatch vers read_torsvik_apwps_csv/read_vaes2023_apwp selon le
+    nom de fichier (les deux fichiers de reference explicitement fournis
+    par l'utilisateur - reconnus par une sous-chaine "torsvik"/"vaes"
+    dans leur nom, insensible a la casse)."""
+    if "vaes" in os.path.basename(path).lower():
+        return read_vaes2023_apwp(path, continent)
+    return read_torsvik_apwps_csv(path, continent)
+
+
+def paleolati_from_apwp_table(
+    path: str, continent: str, site_lat: float, site_lon: float,
+) -> Tuple[str, List[dict]]:
+    """Equivalent de `paleolati` cases(1-7) (fichier Torsvik) pour
+    Torsvik_APWPs.csv OU Vaes_2023_APWP.txt (voir read_apwp_table) - MEME
+    structure de sortie que paleolati_from_file, mais SANS parametre de
+    polarite : le Fortran ne demande `polarit` QUE dans son cas(0) (fichier
+    generique) - les cases(1-7) qui lisent le fichier Torsvik ne le
+    demandent JAMAIS et appliquent la TRANSFORMATION SUIVANTE de facon
+    INCONDITIONNELLE (pmagoutils.f:5203-5230, repliquee telle quelle,
+    memes reserves que les autres bugs/quirks Fortran de ce module -
+    signature d'une convention de signe du pole propre a la table
+    Torsvik plutot qu'un choix utilisateur) : vlat=-vlat, vlon=vlon+180."""
+    rows = []
+    for age, vlat, vlon, a95 in read_apwp_table(path, continent):
+        vlat, vlon = -vlat, (vlon + 180.0) % 360.0
+        dec, dip = vgp_di(vlat, vlon, site_lat, site_lon)
+        if dec > 180.0:
+            dec -= 360.0
+        row = {"age": age, "vgp_lat": vlat, "vgp_lon": vlon, "a95": a95, "dec": dec, "inc": dip}
+        if a95 > 0.0:
+            dd, dp = _dd_di_vgp_to_dir(dip, a95)
+            plat = math.atan(0.5 * math.tan(RAD(dip)))
+            plat_lo = math.atan(0.5 * math.tan(RAD(dip - dp)))
+            plat_hi = math.atan(0.5 * math.tan(RAD(dip + dp)))
+            row.update({"dp": dp, "paleolat": DEG(plat), "paleolat_min": DEG(plat_lo), "paleolat_max": DEG(plat_hi)})
+        else:
+            row["paleolat"] = DEG(math.atan(0.5 * math.tan(RAD(dip))))
+        rows.append(row)
+    lines = [f"# {continent} ({os.path.basename(path)})",
+             "age  vlat   vlon    a95    dec    dip      DP   plat   plat_min  plat_max"]
     for r in rows:
         if "dp" in r:
             lines.append(
@@ -919,17 +1099,140 @@ def relocatevar_simplified(
 
 
 # ---------------------------------------------------------------------------
+# Reference APWP auto-localisee depuis le fichier de donnees (ROTA2GMT) -
+# demande explicite utilisateur ("l'APWP est importante et ce n'est pas un
+# commentaire, voir source Fortran") : PORT REEL d'un comportement du
+# Fortran (calcrota.f:101-108) qui n'avait PAS ete repris lors du premier
+# portage de ROTA2GMT - la ligne 1 du fichier de donnees peut etre un
+# CHEMIN vers le fichier APWP de reference a utiliser (teste EXACTEMENT
+# comme le Fortran : commence par "/" ou a un ":" en 2e caractere, ex.
+# "C:"), auquel cas ce chemin est ouvert directement plutot que d'etre
+# traite comme une ligne de donnees - voir first_line_is_apwp_path/
+# resolve_apwp_reference.
+#
+# "Plus universel" (demande explicite utilisateur) : le chemin ecrit dans
+# le fichier de donnees est souvent un chemin ABSOLU propre a UNE machine
+# (ex. "/Users/pierrickroperch/Appli_Paleomag/_APWP/T-12/Europe[10Ma]") -
+# non portable tel quel. Un dossier "racine APWP" est donc configurable
+# UNE FOIS (voir set_apwp_root/get_apwp_root, persiste dans
+# ~/.stereoutils_py_prefs.json) ; resolve_apwp_reference essaie DANS
+# L'ORDRE : (1) le chemin tel quel (fonctionne encore sur la machine
+# d'origine, retro-compatible), (2) les 2 derniers segments de ce chemin
+# (dossier parent + nom de fichier, ex. "T-12/Europe[10Ma]") rejoints a
+# la racine configuree (fonctionne sur une AUTRE machine, du moment que
+# son propre dossier _APWP suit la meme organisation en sous-dossiers) -
+# et ne force rien si aucun des deux n'existe (repli sur le dialogue de
+# choix de fichier, deja en place, voir app.pu_rota2gmt).
+# ---------------------------------------------------------------------------
+
+_PREFS_PATH = os.path.expanduser("~/.stereoutils_py_prefs.json")
+
+
+def _load_prefs() -> dict:
+    try:
+        with open(_PREFS_PATH, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_prefs(prefs: dict) -> None:
+    try:
+        with open(_PREFS_PATH, "w", encoding="utf-8") as f:
+            json.dump(prefs, f, indent=2)
+    except OSError:
+        pass
+
+
+def get_apwp_root() -> Optional[str]:
+    """Dossier racine APWP configure (None si jamais defini)."""
+    return _load_prefs().get("apwp_root") or None
+
+
+def set_apwp_root(path: str) -> None:
+    prefs = _load_prefs()
+    prefs["apwp_root"] = path
+    _save_prefs(prefs)
+
+
+def first_line_is_apwp_path(line: str) -> bool:
+    """Meme test EXACT que calcrota.f:102 (`chainedata(1:1)=="/" .or.
+    chainedata(2:2)==":"`) : premier caractere "/" (chemin Unix absolu) ou
+    second caractere ":" (lettre de lecteur Windows, ex. "C:")."""
+    line = line.rstrip("\n")
+    return len(line) >= 1 and (line[0] == "/" or (len(line) >= 2 and line[1] == ":"))
+
+
+def parse_apwp_reference_line(line: str) -> Tuple[str, Optional[str]]:
+    """(chemin, continent_ou_None) depuis la ligne 1 d'un fichier de
+    donnees ROTA2GMT - demande explicite utilisateur : cette ligne peut
+    maintenant porter, apres le chemin, le nom du continent/craton a
+    utiliser dans un fichier de reference MULTI-continents comme
+    Torsvik_APWPs.csv ou Vaes_2023_APWP.txt (ex.
+    "/path/Torsvik_APWPs.csv India"). Un seul split (`maxsplit=1`) : le
+    nom de continent peut lui-meme contenir un espace (ex. "East
+    Antarctica"), le chemin est suppose ne jamais en contenir."""
+    parts = line.rstrip("\n").strip().split(None, 1)
+    if len(parts) == 2:
+        return parts[0], parts[1].strip()
+    return parts[0] if parts else "", None
+
+
+def resolve_apwp_reference(embedded_path: str, apwp_root: Optional[str]) -> Optional[str]:
+    """Chemin REEL du fichier APWP de reference a partir de la ligne
+    embarquee dans le fichier de donnees - voir docstring de section.
+    None si ni le chemin tel quel ni sa resolution via `apwp_root`
+    n'existent sur cette machine."""
+    embedded_path = embedded_path.strip()
+    if os.path.isfile(embedded_path):
+        return embedded_path
+    if apwp_root:
+        parent = os.path.basename(os.path.dirname(embedded_path))
+        name = os.path.basename(embedded_path)
+        candidate = os.path.join(apwp_root, parent, name) if parent else os.path.join(apwp_root, name)
+        if os.path.isfile(candidate):
+            return candidate
+    return None
+
+
+# ---------------------------------------------------------------------------
 # Rotation vers GMT (ROTA2GMT/HELPROTA/VECPIE) - calcrota.f
 # ---------------------------------------------------------------------------
 
 HELPROTA_TEXT = (
-    "Ce programme calcule les rotations tectoniques par rapport a une courbe de poles de reference (APWP).\n"
-    "Format attendu pour le fichier de donnees (une ligne par site) :\n"
-    "  REF  SITE  AGE  Polarity(N/R)  LAT  LON  DEC  INC  A95  [REF_publication]\n"
-    "Exemple : 11_03HU07  45  -15.89185  -73.52869  124.1  44.7  6.3\n"
-    "Format attendu pour le fichier APWP de reference (une ligne par pole) :\n"
-    "  AGE  <2 champs ignores>  POLE_LAT  POLE_LON  P95\n"
-    "Prefixer REF par \"s_\" pour appliquer la correction d'aplatissement sedimentaire (fflatcor).\n"
+    "This program calculates tectonic rotations relative to a reference apparent polar wander path\n"
+    "(APWP) from major plates - Torsvik et al. (2012) or Vaes et al. (2023).\n"
+    "\n"
+    "Expected format for the data file (one line per site):\n"
+    "  REF  SITE  AGE  Polarity(N/R)  site_LAT  site_LON  pmag_DEC  pmag_INC  A95  [REF_publication]\n"
+    "Example: s_11_03HU07  45  R  -15.89185  -73.52869  124.1  44.7  6.3\n"
+    "Prefix REF with \"s_\" to apply the sedimentary flattening correction (fflatcor).\n"
+    "\n"
+    "This routine produces three files:\n"
+    "  .res          rotation and flattening values at each site\n"
+    "  .vec and .pie the two files used for the GMT plots\n"
+    "\n"
+    "Reference APWP - one of:\n"
+    "  - your own file (one pole per line): AGE  <2 ignored fields>  POLE_LAT  POLE_LON  P95\n"
+    "  - Torsvik et al. (2012), available continents/cratons:\n"
+    "      North America, Europe, India, Amazonia, Australia, East Antarctica, Africa\n"
+    "  - Vaes et al. (2023), available continents/cratons:\n"
+    "      North America, South America, Eurasia, India, Australia, Antarctica, Pacific, Iberia\n"
+    "\n"
+    "To use the Torsvik or Vaes reference curves, make the very first line of your data file the\n"
+    "path to that file followed by the chosen continent/craton, e.g.:\n"
+    "\n"
+    "full_path/Torsvik_APWPs.csv Europe\n"
+    "#\n"
+    " v_42_01 Xialaxiu   50.0  N  32.66  96.61  13.3   39.0  5.9   This_study\n"
+    " s_42_02 Nangqian   50.0  N  32.30  96.45  354.7  29.0  13.9  This_study\n"
+    "\n"
+    "or\n"
+    "\n"
+    "full_path/Vaes_2023_APWP.txt Eurasia\n"
+    "#\n"
+    " v_42_01 Xialaxiu   50.0  N  32.66  96.61  13.3   39.0  5.9   This_study\n"
+    " s_42_02 Nangqian   50.0  N  32.30  96.45  354.7  29.0  13.9  This_study\n"
 )
 
 
@@ -963,7 +1266,12 @@ def rota2gmt_core(
         "REF        SITE          AGE   LAT     LONG    DOBS   INC     A95    "
         "POLE_LAT POLE_LON P95    DEXP   IEXP    ROT    dROT   FLAT  FLAT_cor  dFLAT"
     ]
-    vec_lines, pie_lines = [], []
+    # En-tete des fichiers .vec/.pie (demande explicite utilisateur) - "#"
+    # pour rester un commentaire ignore par GMT comme par tout autre
+    # lecteur de ce fichier, meme convention que les lignes commentees
+    # ailleurs dans ce projet (_is_comment_or_blank).
+    vec_lines = ["#Longitude  Latitude  Rotation  Length arrow"]
+    pie_lines = ["#Longitude Latitude    a1     a2 (angles for the GMT plot pie)"]
     for iref, site, age, carpol, al, g, rdec_obs, rinc_obs, a95, ref in data_rows:
         if age <= age_min or age > age_max:
             continue

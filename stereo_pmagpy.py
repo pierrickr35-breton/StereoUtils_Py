@@ -98,6 +98,23 @@ def fisher_mean(directions: List[Tuple[float, float]]) -> dict:
     return {k: (int(v) if k == "n" else float(v)) for k, v in fpars.items()}
 
 
+def generate_fisher_population(
+    k: float, n: int, dec: float = 0.0, inc: float = 90.0, random_seed=None,
+) -> List[Tuple[float, float]]:
+    """Population synthetique de `n` directions fisheriennes (kappa `k`,
+    direction moyenne `dec`/`inc`) - ajout hors source Fortran, demande
+    explicite utilisateur ("trouver dans PmagPy la generation de
+    population de directions avec une distribution fisherienne
+    caracterisee par le parametre k (fishgen)") : aucun equivalent
+    "fishgen" natif dans le Fortran de ce projet, direct `ipmag.fishrot`
+    (genere `pmag.fshdev` dans le repere polaire standard - dec/inc
+    fisherien autour du pole - puis fait pivoter le nuage vers dec/inc
+    demandes via `pmag.dodirot_V`, meme technique que `pmag.fisher_mean`
+    utilise en sens inverse pour ses propres tests)."""
+    dec_arr, inc_arr = ipmag.fishrot(k=k, n=n, dec=dec, inc=inc, di_block=False, random_seed=random_seed)
+    return [(float(d), float(i)) for d, i in zip(dec_arr, inc_arr)]
+
+
 def bootstrap_ellipse(
     directions: List[Tuple[float, float]], num_sims: int = 1000, alpha: float = 0.05, random_seed=None,
 ) -> Tuple[dict, List[str]]:
@@ -233,7 +250,38 @@ def plot_vgp_project(entries, view_lat: float = 0.0, view_lon: float = 0.0):
     calcul.dp_dm_from_a95) via `pmag.circ` quand le site n'est PAS connu
     (fichier plus ancien sans site_lat/site_lon, ou VGP sans site unique) -
     convention deja utilisee ailleurs dans ce meme projet pour les VGP
-    d'un APWP (voir app.py, colonne "p95" de `read_apwp_file`)."""
+    d'un APWP (voir app.py, colonne "p95" de `read_apwp_file`).
+
+    TROIS CORRECTIONS reelles apportees ici (demande explicite utilisateur,
+    sur un vrai projet de 48 sites - Paleomag_2026/_Pmag_Data_VarSec/
+    proj_VarsecChili.txt) :
+    - `transform="Geodetic"` (au lieu du defaut "PlateCarree" de
+      `ipmag.plot_pole_dp_dm`) : BUG REEL confirme sur ce fichier - des
+      qu'un VGP est plus proche du pole geographique que son propre
+      dp/dm (6 sites ici, ex. 10CL35 a 89.2°N pour un dm de 2.5°),
+      `ipmag.ellipse` echantillonne des points de part et d'autre du
+      pole ; relies par des droites en coordonnees lon/lat non projetees
+      (PlateCarree) plutot que par le vrai grand cercle, ces points
+      produisent une ellipse "polygonale" (aretes droites visibles,
+      au lieu d'une courbe lisse) - confirme disparu (courbe a nouveau
+      lisse sur les 6 sites concernes) avec ce transform, verifie par
+      rendu compare des deux versions sur ce meme fichier.
+    - `site_label="_nolegend_"` (convention matplotlib : un label
+      commencant par "_" est exclu de la legende automatique) plutot que
+      `f"{e.site} (site)"` : la legende comptait donc AUPARAVANT 2
+      entrees par site (pole + site), la moitie d'entre elles ("(site)")
+      ne correspondant meme pas a un marqueur VISIBLE des que le site
+      (ici au Chili) est a l'oppose du point de vue choisi pour centrer
+      les poles (ici pres du pole Nord) - une projection orthographique
+      ne montre jamais qu'un seul hemisphere a la fois. Le marqueur carre
+      du site reste trace sur la carte quand il EST visible (ce fut
+      seulement la ligne de legende dediee qui disparait) - la geometrie
+      de l'ellipse (voir docstring ci-dessus) continue d'en avoir besoin.
+    - Legende sortie du cadre de la carte (`bbox_to_anchor`) et sur 2
+      colonnes, petite police : `loc=2` (dans les axes) recouvrait
+      litteralement la carte des qu'il y a plus qu'une poignee de sites
+      (48 ici -> 48 lignes de legende, avant meme la duplication
+      "(site)" ci-dessus)."""
     plt.close("all")
     ax = ipmag.make_orthographic_map(central_longitude=view_lon, central_latitude=view_lat)
     for e in entries:
@@ -251,10 +299,10 @@ def plot_vgp_project(entries, view_lat: float = 0.0, view_lon: float = 0.0):
         if has_site and (e.dp > 0.0 or e.dm > 0.0):
             ipmag.plot_pole_dp_dm(
                 ax, e.paleolon, e.paleolat, e.site_lon, e.site_lat, e.dp, e.dm,
-                pole_label=e.site, site_label=f"{e.site} (site)",
+                pole_label=e.site, site_label="_nolegend_",
                 pole_color=color, pole_edgecolor=color, pole_marker=marker,
                 site_color=color, site_edgecolor=color, site_marker="s",
-                markersize=markersize, legend=False,
+                markersize=markersize, legend=False, transform="Geodetic",
             )
         else:
             ipmag.plot_vgp(
@@ -265,9 +313,253 @@ def plot_vgp_project(entries, view_lat: float = 0.0, view_lon: float = 0.0):
                 lons, lats = pmag.circ(e.paleolon, e.paleolat, e.p95)
                 ax.plot(lons, lats, color=color, linewidth=1, transform=ccrs.Geodetic())
     if entries:
-        plt.legend(loc=2)
+        plt.legend(loc="upper left", bbox_to_anchor=(1.02, 1.0), fontsize=7,
+                   ncol=2 if len(entries) > 20 else 1, borderaxespad=0.0)
     save_folder = tempfile.mkdtemp(prefix="stereoutils_")
     path = os.path.join(save_folder, "vgp_project_map.png")
-    plt.savefig(path, dpi=120)
+    # bbox_inches="tight" : sans ca, la legende SORTIE du cadre de la carte
+    # (voir ci-dessus, bbox_to_anchor) serait coupee a la marge par defaut
+    # de la figure plutot que d'agrandir le PNG pour l'inclure entierement.
+    plt.savefig(path, dpi=120, bbox_inches="tight")
     plt.close("all")
     return None, [path]
+
+
+# ---------------------------------------------------------------------------
+# Modeles de champ paleomagnetique/paleosecular-variation (series temporelles
+# D/I/F predites a un site) - demande explicite utilisateur ("est-ce
+# possible d'ajouter la creation des series temporelles de champ magnetique
+# a partir des modeles GUFM et les modeles Cals3K, Cals10k, Schadiff etc;
+# voir ce qui est deja disponible dans PmagPy").
+#
+# `pmagpy/coefficients.py` embarque deja les coefficients de Gauss de tous
+# ces modeles ; `pmag.doigrf`/`ipmag.igrf` (deja utilise ailleurs dans ce
+# module, voir plot_vgps_on_map) les selectionne via son parametre `mod`.
+# AUCUNE nouvelle geometrie/formule introduite ici - seulement une boucle
+# sur la date, plus l'affichage/export du resultat.
+#
+# Bornes de date NON recopiees d'un docstring pmagpy (voir ci-dessous, `mod`
+# reellement teste contre de vraies requetes plutot que suppose) : lues en
+# direct sur chaque `coefficients.get_*()` (min/max de sa propre liste
+# d'epoques) - un changement de version de pmagpy les garde a jour tout
+# seul, et permet a `predicted_field_curve` de sauter proprement (warning,
+# pas d'exception) toute date que le modele ne couvre pas reellement.
+#
+# DEUX ECARTS REELS decouverts en testant chaque modele avec de vraies
+# requetes (lat=-39/lon=-72, plusieurs dates) avant d'ecrire ce module :
+#   - Le docstring de `pmag.doigrf`/`ipmag.igrf` liste 'cals10k.1b' comme
+#     valeur attendue pour `mod` - mais le code de `doigrf` (branche
+#     date<1900) ne teste QUE la chaine exacte 'cals10k' pour choisir son
+#     increment temporel (50 ans) ; passer 'cals10k.1b' tombe dans un autre
+#     cas et leve `ValueError: x not in list` des que date<1900. `mod=
+#     "cals10k"` (sans le suffixe) fonctionne correctement - c'est cette
+#     chaine qui est utilisee ci-dessous.
+#   - `mod='ggf100k'` (Panovska et al., 2018) : BUG REEL dans
+#     `coefficients.get_ggf100k()` - sa liste d'epoques (`models`, 606
+#     entrees) et son tableau de coefficients (`coeffs`, 602 lignes) n'ont
+#     PAS la meme longueur, ce qui leve `IndexError` des que la date
+#     tombe sur l'une des 4 epoques manquantes (constate y compris sur
+#     LA SEULE date "ronde" documentee, 1850). Retire de la liste ci-
+#     dessous plutot que d'exposer un choix qui echoue presque a coup sur.
+#
+# GUFM1 (Jackson et al., 2000) - CABLE ICI A LA MAIN (pas via pmag.doigrf/
+# ipmag.igrf, qui ne le connaissent pas du tout) : un module dedie
+# (`pmagpy/gufm.py`) existe bien dans cette copie locale de pmagpy, avec
+# ses coefficients de Gauss par pas de 5 ans, mais s'arrete a l'echelon
+# 1940-1945 SANS aucun `else`/`return` au-dela (`gufm.coeffs(date)` pour
+# date>=1945 renvoie silencieusement `None`). Remarque utilisateur qui
+# rend ce trou sans consequence pratique : le menu IGRF (mod="" ci-dessus)
+# couvre DEJA 1900 a aujourd'hui, donc la seule plage ou GUFM1 apporterait
+# quelque chose d'unique (avant le debut d'IGRF) est 1600-1900, entierement
+# couverte par les donnees presentes dans le fichier - inutile de completer
+# 1945-1990 pour rendre GUFM1 utile ici. Voir `_gufm1_dif` pour le calcul
+# (meme technique que pmag.doigrf pour ses autres modeles paleo : secular
+# variation entre deux echelons de 5 ans, puis `pmag.magsyn`) et pour les
+# deux garde-fous necessaires (sys.exit() interne pour date<1600 ;
+# troncature reelle a 120 coefficients - degre <=10 - avant magsyn, les
+# 224 coefficients de GUFM1, degre 14, n'etant pas tous exploites par
+# cette implementation de magsyn, verifie identique tronque/non tronque).
+_FIELD_MODEL_SPECS = [
+    ("IGRF14 (Alken et al., 2021)", ""),
+    ("GUFM1 (Jackson et al., 2000)", "gufm1"),
+    ("ARCH3k (Korte et al., 2009)", "arch3k"),
+    ("CALS3k.4b (Korte & Constable, 2011)", "cals3k"),
+    ("CALS10k.1b (Korte et al., 2011)", "cals10k"),
+    ("CALS10k.2 (Constable et al., 2016)", "cals10k.2"),
+    ("PFM9k (Nilsson et al., 2014)", "pfm9k"),
+    ("HFM.OL1.A1 (Constable et al., 2016)", "hfm10k"),
+    ("SHA.DIF.14k (Pavon-Carrasco et al., 2014)", "shadif14k"),
+    ("SHAWQ2k (Campuzano et al., 2019)", "shawq2k"),
+    ("SHAWQ-Iberia (Osete et al., 2020)", "shawqIA"),
+]
+
+
+def field_model_choices() -> List[Tuple[str, str]]:
+    """(label, mod) pour chaque modele de `_FIELD_MODEL_SPECS`, le label
+    portant sa plage de dates REELLE (lue sur `coefficients.py`, voir
+    docstring de section ci-dessus) - IGRF14 seul n'a pas de `coefficients.
+    get_*()` dedie (voir pmag.doigrf, `models, igrf14coeffs =
+    cf.get_igrf14()` inconditionnel), affiche avec sa plage documentee."""
+    from pmagpy import coefficients as cf
+    getters = {
+        "arch3k": cf.get_arch3k, "cals3k": cf.get_cals3k, "cals10k": cf.get_cals10k,
+        "cals10k.2": cf.get_cals10k_2, "pfm9k": cf.get_pfm9k, "hfm10k": cf.get_hfm10k,
+        "shadif14k": cf.get_shadif14k, "shawq2k": cf.get_shawq2k, "shawqIA": cf.get_shawqIA,
+    }
+    choices = []
+    for label, mod in _FIELD_MODEL_SPECS:
+        if mod == "gufm1":
+            # Voir docstring de section : plage codee en dur (pas de
+            # coefficients.get_*() pour ce modele) - 1600 borne basse
+            # verifiee (gufm.coeffs leve plus bas), 1940 borne haute
+            # verifiee empiriquement (le dernier echelon du fichier,
+            # 1940-1945, ne peut pas fournir la SV puisque l'echelon
+            # suivant, 1945, n'existe pas - voir _gufm1_dif).
+            choices.append((f"{label} [1600 to 1940]", mod))
+        elif mod in getters:
+            models, _ = getters[mod]()
+            choices.append((f"{label} [{int(min(models))} to {int(max(models))}]", mod))
+        else:
+            choices.append((f"{label} [1900 to present]", mod))
+    return choices
+
+
+def _gufm1_dif(lat: float, lon: float, alt_km: float, date: float) -> Tuple[float, float, float]:
+    """D/I/F pour GUFM1 (Jackson et al., 2000) - voir la docstring de
+    section pour le contexte complet (pourquoi ce modele n'est pas
+    accessible via pmag.doigrf/ipmag.igrf, et pourquoi sa plage 1945-1990
+    manquante n'a pas besoin d'etre completee ici).
+
+    Meme technique que `pmag.doigrf` pour ses propres modeles paleo
+    (arch3k, cals10k...) : secular variation calculee entre l'echelon de
+    5 ans courant et le suivant, puis `pmag.magsyn` (la meme routine
+    Malin & Barraclough qu'utilise doigrf) pour interpoler a la date
+    exacte demandee - aucune formule nouvelle, seulement le branchement
+    manquant vers `gufm.coeffs`.
+
+    Deux garde-fous, tous deux verifies empiriquement avant d'ecrire cette
+    fonction (voir conversation) plutot que de faire confiance au fichier :
+    - date<1600 : `gufm.coeffs` appelle `sys.exit()` dans ce cas - PAS une
+      Exception normale (`SystemExit` derive de BaseException) qui
+      tuerait l'application entiere si elle remontait jusqu'a la boucle
+      Tkinter, sans etre interceptee par le `except Exception` de
+      `predicted_field_curve`. Verifie ICI en amont pour lever un
+      ValueError normal a la place.
+    - date>=1940 (dernier echelon du fichier sans suite) : `gufm.coeffs`
+      pour l'echelon suivant (+5 ans) retourne silencieusement `None`
+      (aucune exception) - detecte explicitement pour lever un message
+      clair plutot que de laisser le `zip` suivant echouer avec un
+      TypeError opaque.
+
+    Les tableaux de coefficients de GUFM1 font 224 elements (degre 14) ;
+    `pmag.magsyn` (implementation Malin & Barraclough, meme routine que
+    pour tous les autres modeles de ce fichier) n'en exploite que les 120
+    premiers (degre <=10) - verifie : resultat rigoureusement identique en
+    tronquant explicitement a 120 avant l'appel. Les degres 11-14 de
+    GUFM1 sont donc silencieusement ignores, comme ils le seraient de
+    toute facon pour rester a la meme resolution que les autres modeles."""
+    if date < 1600:
+        raise ValueError("GUFM1 has no data before 1600")
+    from pmagpy import gufm
+    model = date - (date % 5.0)
+    gh = gufm.coeffs(model)
+    gh_next = gufm.coeffs(model + 5.0)
+    if gh_next is None:
+        raise ValueError("GUFM1 has no data at/after 1945 (see field_model_choices: use IGRF14 from 1900)")
+    sv = [(b - a) / 5.0 for a, b in zip(gh, gh_next)]
+    colat = 90.0 - lat
+    x, y, z, f = pmag.magsyn(gh, sv, model, date, 1, alt_km, colat, lon % 360)
+    dec, inc, _ = pmag.cart2dir((x, y, z))
+    return float(dec), float(inc), float(f)
+
+
+def predicted_field_curve(
+    lat: float, lon: float, alt_km: float, date_start: float, date_end: float,
+    step: float, mod: str,
+) -> Tuple[List[Tuple[float, float, float, float]], List[str]]:
+    """Serie temporelle D/I/F predite au site (lat,lon,alt_km) par le
+    modele `mod` (voir `_FIELD_MODEL_SPECS`, "" = IGRF14, "gufm1" = voir
+    `_gufm1_dif`, tout le reste = `ipmag.igrf`), du plus vieux au plus
+    recent quel que soit l'ordre de `date_start`/`date_end`.
+
+    Retourne (points, warnings) - points = liste de (date, dec, inc,
+    f_uT) une entree PAR DATE OU le modele a repondu ; warnings = une
+    entree par date en echec (hors de la plage reellement couverte par ce
+    modele, ou toute autre erreur numerique) plutot que de faire echouer
+    tout le calcul - meme esprit "un point illisible est saute, pas
+    fatal" que ams_asc.parse_asc_file. Intensite convertie de nT (retour
+    natif de `ipmag.igrf`/`pmag.magsyn`) en microTesla, l'unite utilisee
+    partout ailleurs dans ce projet pour la paleointensite."""
+    date_start, date_end = min(date_start, date_end), max(date_start, date_end)
+    step = abs(step) or 1.0
+    kwargs = {} if mod == "" else {"mod": mod}
+    points: List[Tuple[float, float, float, float]] = []
+    warnings: List[str] = []
+    date = date_start
+    while date <= date_end + 1e-9:
+        try:
+            if mod == "gufm1":
+                dec, inc, f_nt = _gufm1_dif(lat, lon, alt_km, date)
+            else:
+                dec, inc, f_nt = ipmag.igrf([date, alt_km, lat, lon], **kwargs)
+            points.append((date, float(dec), float(inc), float(f_nt) / 1000.0))
+        except Exception as e:
+            warnings.append(f"{date:g}: {type(e).__name__}: {e}")
+        date += step
+    return points, warnings
+
+
+def plot_field_curve(points: List[Tuple[float, float, float, float]], title: str = ""):
+    """3 sous-graphiques empiles (Dec/Inc/Intensity vs date), meme
+    convention de sauvegarde (PNG dans un dossier temporaire, chemin
+    retourne pour `app._show_images`) que les autres fonctions de trace de
+    ce module."""
+    plt.close("all")
+    dates = [p[0] for p in points]
+    # Declinaison ramenee a [-180, 180] (300 -> -60) plutot que le [0,360)
+    # natif d'ipmag.igrf/pmag.cart2dir - demande explicite utilisateur
+    # ("pour les graphiques de declinaison, comme il s'agit de champ
+    # recent, faire l'echelle entre -60 et +60 (300 =-60)") : evite le saut
+    # 350->5 a chaque passage par 0/360, et rend l'echelle -60/+60 ci-
+    # dessous lisible pour une declinaison qui oscille autour de 0 (champ
+    # recent - une excursion paleosecular-variation de plusieurs dizaines
+    # de degres resterait visible, juste coupee au bord du cadre si elle
+    # depasse cette echelle plutot que de la re-elargir automatiquement).
+    dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in points]
+    inc = [p[2] for p in points]
+    f_ut = [p[3] for p in points]
+    fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 8))
+    axes[0].plot(dates, dec, "b.-")
+    axes[0].set_ylabel("Declination (°)")
+    axes[0].set_ylim(-60.0, 60.0)
+    axes[1].plot(dates, inc, "r.-")
+    axes[1].set_ylabel("Inclination (°)")
+    axes[2].plot(dates, f_ut, "g.-")
+    axes[2].set_ylabel("Intensity (µT)")
+    axes[2].set_xlabel("Date (years CE)")
+    if title:
+        axes[0].set_title(title)
+    for ax in axes:
+        ax.grid(True, linewidth=0.3)
+    fig.tight_layout()
+    save_folder = tempfile.mkdtemp(prefix="stereoutils_")
+    path = os.path.join(save_folder, "field_curve.png")
+    fig.savefig(path, dpi=120)
+    plt.close("all")
+    return path
+
+
+def write_field_curve_file(
+    points: List[Tuple[float, float, float, float]], path: str,
+    lat: float, lon: float, alt_km: float, model_label: str,
+) -> None:
+    """Fichier texte tabule (date, dec, inc, intensite en uT), en-tete
+    commente (#...) - meme convention que les fichiers "Project"
+    (STARpaleomag_Py/export_stereo), directement relisable par un tableur
+    ou un autre script sans plus de traitement."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(f"# predicted field curve - model: {model_label}\n")
+        f.write(f"# site: lat={lat:.4f}  lon={lon:.4f}  altitude={alt_km:.2f} km\n")
+        f.write("#date\tdec\tinc\tintensity_uT\n")
+        for date, dec, inc, f_ut in points:
+            f.write(f"{date:g}\t{dec:.2f}\t{inc:.2f}\t{f_ut:.3f}\n")

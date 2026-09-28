@@ -42,6 +42,7 @@ from stereo_selection import (
     read_di_file, read_fold_file, read_di_tc_file,
     read_di_a95_file, read_di_a95_tc_file,
     read_great_circle_file, read_text_lines, split_header,
+    write_di_file, write_di_a95_file, write_great_circle_file,
 )
 from stereo_net import build_stereo_figure, build_stereo_svg
 import stereo_pmagpy as sp
@@ -73,9 +74,42 @@ _SYMBOL_CHARS = {"c", "t", "e", "l", "s"}
 # et lie separement via `bind_all` (_setup_shortcuts).
 _SHORTCUTS_MAC = {
     "hystnorm": ("Cmd+N", "<Command-n>"),
+    # 5 raccourcis ajoutes pour les menus les plus frequents (demande
+    # explicite utilisateur "ajouter des shortcuts pour les menus les
+    # plus frequents: file; manual, plot, initialize, fisher") - lettres
+    # mnemoniques (Open/Manual/Plot/Initialize/Fisher), Cmd+M evite tel
+    # quel (reserve globalement par macOS pour minimiser la fenetre, non
+    # intercepte par notre propre `bind_all` - voir commentaire ci-
+    # dessus sur `accelerator=` : meme categorie de piege, cote OS cette
+    # fois) d'ou Cmd+Shift+M plutot que Cmd+M pour "manual".
+    "file-open": ("Cmd+O", "<Command-o>"),
+    "manual-entry": ("Cmd+Shift+M", "<Command-Shift-M>"),
+    "plot-stereo": ("Cmd+P", "<Command-p>"),
+    "data-init": ("Cmd+I", "<Command-i>"),
+    # Sur "le Fisher du menu Statistics" (stat_fisher_statistics, natif
+    # avec separation en modes normal/reverse - ANGU), pas sur PmagPy-
+    # tools > Fisher (pmagpy_fisher) qui portait Cmd+F au tour precedent -
+    # demande explicite utilisateur ("mettre le shortcut sur le fisher du
+    # menu statistic").
+    "stats-fisher": ("Cmd+F", "<Command-f>"),
+    "data-list": ("Cmd+L", "<Command-l>"),
 }
 _SHORTCUTS_WIN = {
     "hystnorm": ("Ctrl+Shift+N", "<Control-Shift-N>"),
+    # Meme choix de lettre que cote Mac, mais TOUJOURS Ctrl+Shift+<lettre>
+    # (pas Ctrl+<lettre> seul) - meme raison que hystnorm/Ctrl+Shift+N :
+    # Ctrl+O/Ctrl+P/Ctrl+I/Ctrl+F sont des conventions Windows tres
+    # etablies (Open/Print/Italic/Find) dans la quasi-totalite des
+    # logiciels ; les reprendre pour une action differente ici serait
+    # plus surprenant pour un utilisateur Windows que pour un utilisateur
+    # Mac (ou Cmd+O/Cmd+P/Cmd+I/Cmd+F ne sont pas verrouilles au niveau
+    # systeme et restent d'usage courant app par app).
+    "file-open": ("Ctrl+Shift+O", "<Control-Shift-O>"),
+    "manual-entry": ("Ctrl+Shift+M", "<Control-Shift-M>"),
+    "plot-stereo": ("Ctrl+Shift+P", "<Control-Shift-P>"),
+    "data-init": ("Ctrl+Shift+I", "<Control-Shift-I>"),
+    "stats-fisher": ("Ctrl+Shift+F", "<Control-Shift-F>"),
+    "data-list": ("Ctrl+Shift+L", "<Control-Shift-L>"),
 }
 SHORTCUTS = _SHORTCUTS_WIN if sys.platform.startswith("win") else _SHORTCUTS_MAC
 
@@ -360,7 +394,17 @@ class StereoUtilsApp:
         utilisateur "change the menu projection by Graphics, add plot
         stereo in this menu") : trace le cadre du reseau + les directions
         chargees, dans le canvas integre (pas de fichier image
-        intermediaire, contrairement au Pmag_Python)."""
+        intermediaire, contrairement au Pmag_Python). Clear Screen
+        systematique avant tout nouveau trace (demande explicite
+        utilisateur "faire un clear screen avant tout nouveau plot") :
+        chaque type de plot de cette appli partage le MEME `self.fig`
+        persistant, et si `build_*_figure` remet toujours son CONTENU a
+        zero (`fig.clear()`), aucun ne remettait la TAILLE a zero -
+        un plot precedent de forme differente (ex. Plot VGP Project,
+        plusieurs images empilees) restait donc visible en creux dans la
+        forme du canvas tant qu'on n'avait pas clique Clear Screen a la
+        main."""
+        self.clear_screen()
         self._last_image_files = []
         build_stereo_figure(
             self.directions, la=self.la, phi=self.phi, iproj=self.iproj,
@@ -568,6 +612,12 @@ class StereoUtilsApp:
         menu (voir SHORTCUTS/_labeled) - jusque-la purement decoratifs."""
         bindings = {
             "hystnorm": self.hyst_toggle_normalize,
+            "file-open": self.load_di_file,
+            "manual-entry": self.enter_di_manual,
+            "plot-stereo": self.plot_screen,
+            "data-init": self.initialize_data,
+            "stats-fisher": self.stat_fisher_statistics,
+            "data-list": self.list_data,
         }
         for name, callback in bindings.items():
             self.root.bind_all(SHORTCUTS[name][1], lambda event, cb=callback: cb())
@@ -578,7 +628,9 @@ class StereoUtilsApp:
         data_menu = tk.Menu(menubar, tearoff=0)
 
         load_menu = tk.Menu(data_menu, tearoff=0)
-        load_menu.add_command(label="File [D-I]...", command=self._menu_cmd("data-load", self.load_di_file))
+        load_menu.add_command(
+            label=self._labeled("File [D-I]...", "file-open"),
+            command=self._menu_cmd("data-load", self.load_di_file))
         load_menu.add_command(label="File [D-I_TC]...", command=self._menu_cmd("data-load", self.load_di_tc_file))
         load_menu.add_command(label="File [D-I-a95]...", command=self._menu_cmd("data-load", self.load_di_a95_file))
         load_menu.add_command(
@@ -589,8 +641,19 @@ class StereoUtilsApp:
         data_menu.add_cascade(label="Load from file", menu=load_menu)
         data_menu.add_separator()
 
+        save_menu = tk.Menu(data_menu, tearoff=0)
+        save_menu.add_command(label="Save [D-I]...", command=self._menu_cmd("data-save", self.save_di_file))
+        save_menu.add_command(
+            label="Save [D-I-a95]...", command=self._menu_cmd("data-save", self.save_di_a95_file))
+        save_menu.add_command(
+            label="Save [great circle]...", command=self._menu_cmd("data-save", self.save_great_circle_file))
+        data_menu.add_cascade(label="Save data", menu=save_menu)
+        data_menu.add_separator()
+
         manual_menu = tk.Menu(data_menu, tearoff=0)
-        manual_menu.add_command(label="Manual [D-I]...", command=self._menu_cmd("data-manual", self.enter_di_manual))
+        manual_menu.add_command(
+            label=self._labeled("Manual [D-I]...", "manual-entry"),
+            command=self._menu_cmd("data-manual", self.enter_di_manual))
         manual_menu.add_command(
             label="Manual [D-I-a95]...", command=self._menu_cmd("data-manual", self.enter_di_a95_manual))
         manual_menu.add_command(
@@ -598,7 +661,8 @@ class StereoUtilsApp:
         data_menu.add_cascade(label="Manual entry", menu=manual_menu)
         data_menu.add_separator()
 
-        data_menu.add_command(label="List-data", command=self._menu_cmd("data-edit", self.list_data))
+        data_menu.add_command(
+            label=self._labeled("List-data", "data-list"), command=self._menu_cmd("data-edit", self.list_data))
 
         delete_menu = tk.Menu(data_menu, tearoff=0)
         delete_menu.add_command(label="Delete D-I line...", command=self._menu_cmd("data-edit", self.delete_di_line))
@@ -607,7 +671,9 @@ class StereoUtilsApp:
         delete_menu.add_command(label="Delete GC line...", command=self._menu_cmd("data-edit", self.delete_gc_line))
         data_menu.add_cascade(label="Delete", menu=delete_menu)
 
-        data_menu.add_command(label="Initialize...", command=self._menu_cmd("data-edit", self.initialize_data))
+        data_menu.add_command(
+            label=self._labeled("Initialize...", "data-init"),
+            command=self._menu_cmd("data-edit", self.initialize_data))
         data_menu.add_separator()
         data_menu.add_command(
             label="Help Data (file headers)", command=self._menu_cmd("data-help", self.help_data))
@@ -615,7 +681,9 @@ class StereoUtilsApp:
 
         self._iproj_var = tk.IntVar(value=self.iproj)
         proj_menu = tk.Menu(menubar, tearoff=0)
-        proj_menu.add_command(label="Plot stereo", command=self._menu_cmd("graphics-plot", self.plot_screen))
+        proj_menu.add_command(
+            label=self._labeled("Plot stereo", "plot-stereo"),
+            command=self._menu_cmd("graphics-plot", self.plot_screen))
         proj_menu.add_command(
             label="Plot stereo project", command=self._menu_cmd("graphics-plot", self.plot_project))
         proj_menu.add_command(
@@ -642,7 +710,8 @@ class StereoUtilsApp:
 
         stats_menu = tk.Menu(menubar, tearoff=0)
         stats_menu.add_command(
-            label="Fisher Statistics...", command=self._menu_cmd("statistics-fisher", self.stat_fisher_statistics))
+            label=self._labeled("Fisher Statistics...", "stats-fisher"),
+            command=self._menu_cmd("statistics-fisher", self.stat_fisher_statistics))
         stats_menu.add_command(
             label="Fisher Dir+GC...", command=self._menu_cmd("statistics-fisher", self.stat_fisher_dir_gc))
         stats_menu.add_command(
@@ -710,6 +779,9 @@ class StereoUtilsApp:
         gmt_menu.add_command(
             label="Rotation vers GMT plot...", command=self._menu_cmd("pu-gmt", self.pu_rota2gmt))
         gmt_menu.add_command(label="Aide Rotation", command=self._menu_cmd("pu-gmt", self.pu_helprota))
+        gmt_menu.add_separator()
+        gmt_menu.add_command(
+            label="Set APWP folder...", command=self._menu_cmd("pu-gmt", self.pu_set_apwp_root))
         pu_menu.add_cascade(label="GMT rotation export", menu=gmt_menu)
 
         sitemap_menu = tk.Menu(pu_menu, tearoff=0)
@@ -776,6 +848,13 @@ class StereoUtilsApp:
         pmag_menu.add_command(label="Fold Test", command=self._menu_cmd("pmagpy", self.fold_test))
         pmag_menu.add_separator()
         pmag_menu.add_command(label="Mean Inclination", command=self._menu_cmd("pmagpy", self.mean_inclination))
+        pmag_menu.add_separator()
+        pmag_menu.add_command(
+            label="Predicted field curve...", command=self._menu_cmd("pmagpy", self.pmagpy_field_curve))
+        pmag_menu.add_separator()
+        pmag_menu.add_command(
+            label="Generate Fisher population (fishgen)...",
+            command=self._menu_cmd("pmagpy", self.pmagpy_fishgen))
         menubar.add_cascade(label="PmagPy-tools", menu=pmag_menu)
 
         kt_menu = tk.Menu(menubar, tearoff=0)
@@ -919,6 +998,52 @@ class StereoUtilsApp:
         gcs = read_great_circle_file(path)
         self.great_circles.extend(gcs)
         self._afficher(f"{len(gcs)} great circle(s) loaded from {os.path.basename(path)} (GC total: {len(self.great_circles)})\n")
+
+    # -- Save data (ajout hors source Fortran, demande explicite
+    # utilisateur : "pouvoir sauvegarder dans des fichiers les donnees en
+    # memoire si necessaire. ajouter un menu save data") - contrepartie de
+    # "Load from file" ci-dessus, memes 3 listes en memoire, memes formats
+    # de fichier (voir stereo_selection.write_di_file/write_di_a95_file/
+    # write_great_circle_file - relisibles tels quels par les "Load from
+    # file" correspondants, en-tete inclus). Le Project (self.
+    # project_entries/project_vgp_entries) a deja sa propre sauvegarde,
+    # "Export to Project" - pas duplique ici. ------------------------------
+
+    def save_di_file(self):
+        if not self.directions:
+            messagebox.showwarning("No data", "No D-I direction in memory.")
+            return
+        out_path = filedialog.asksaveasfilename(
+            title="Save [D-I]", defaultextension=".txt", initialfile="directions.txt",
+            filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not out_path:
+            return
+        write_di_file(self.directions, out_path)
+        self._afficher(f"{len(self.directions)} direction(s) saved to {os.path.basename(out_path)}\n")
+
+    def save_di_a95_file(self):
+        if not self.means:
+            messagebox.showwarning("No data", "No D-I-a95 mean in memory.")
+            return
+        out_path = filedialog.asksaveasfilename(
+            title="Save [D-I-a95]", defaultextension=".txt", initialfile="means.txt",
+            filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not out_path:
+            return
+        write_di_a95_file(self.means, out_path)
+        self._afficher(f"{len(self.means)} mean(s) saved to {os.path.basename(out_path)}\n")
+
+    def save_great_circle_file(self):
+        if not self.great_circles:
+            messagebox.showwarning("No data", "No great circle in memory.")
+            return
+        out_path = filedialog.asksaveasfilename(
+            title="Save [great circle]", defaultextension=".txt", initialfile="great_circles.txt",
+            filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not out_path:
+            return
+        write_great_circle_file(self.great_circles, out_path)
+        self._afficher(f"{len(self.great_circles)} great circle(s) saved to {os.path.basename(out_path)}\n")
 
     # -- Manual entry (dataman/mean/gdci) ----------------------------------
 
@@ -1438,10 +1563,12 @@ class StereoUtilsApp:
     def plot_project(self):
         """Equivalent de `plotproject` (menu Graphics > Plot stereo project,
         ex-menu "Project" - demande explicite utilisateur "move plot
-        stereo project... within the graphic menu")."""
+        stereo project... within the graphic menu") - Clear Screen
+        systematique avant tout nouveau trace, voir plot_screen."""
         if not self.project_entries:
             messagebox.showwarning("No data", "Load or export a project first.")
             return
+        self.clear_screen()
         self._last_image_files = []
         sproj.build_project_figure(
             self.project_entries, la=self.la, phi=self.phi, iproj=self.iproj,
@@ -1723,6 +1850,16 @@ class StereoUtilsApp:
     # -- Paleolatitude --------------------------------------------------------
 
     def pu_paleolati(self):
+        """Menu Pmag Utilities > Paleolatitude at one site (file)... -
+        port de `paleolati` (pmagoutils.f:5128-5244). Detecte
+        automatiquement (nom de fichier) Torsvik_APWPs.csv/
+        Vaes_2023_APWP.txt - demande explicite utilisateur ("aussi bien
+        pour le menu paleolatitude que pour rota_2_GMT. Le Fortran
+        lisait deja le fichier Torsvik pour paleolatitude") : pour ces
+        deux fichiers, demande un continent/craton (cases 1-7 du menu
+        Fortran d'origine) au lieu d'une polarite - voir
+        stereo_pmagutils.paleolati_from_apwp_table pour pourquoi
+        (le Fortran ne demande JAMAIS la polarite pour ces cas)."""
         path = filedialog.askopenfilename(title="APWP file (age, vgp_lat, vgp_lon, [a95])")
         if not path:
             return
@@ -1730,6 +1867,25 @@ class StereoUtilsApp:
         if site is None:
             return
         slat, slon = site
+
+        if any(tag in os.path.basename(path).lower() for tag in ("torsvik", "vaes")):
+            continents = pu.apwp_table_continents(path)
+            self._afficher("Available continents/cratons: " + ", ".join(continents) + "\n")
+            continent = self._console_input("continent/craton : ", continents[0])
+            if continent is None:
+                return
+            continent = continent.strip()
+            if continent not in continents:
+                messagebox.showerror("Error", f"{continent!r} not in: {', '.join(continents)}")
+                return
+            try:
+                text, _rows = pu.paleolati_from_apwp_table(path, continent, slat, slon)
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            self._afficher(text)
+            return
+
         pol_s = self._console_input("Polarity Normal (1) or Reverse (-1) : ", "1")
         if pol_s is None:
             return
@@ -1751,13 +1907,52 @@ class StereoUtilsApp:
     # -- GMT rotation export --------------------------------------------------
 
     def pu_rota2gmt(self):
+        """Port de ROTA2GMT (calcrota.f) - voir stereo_pmagutils.py pour le
+        detail de l'auto-localisation de l'APWP de reference depuis la
+        ligne 1 du fichier de donnees (demande explicite utilisateur :
+        "l'APWP est importante et ce n'est pas un commentaire, voir
+        source Fortran" - ce comportement Fortran REEL n'avait pas ete
+        repris lors du premier portage, qui demandait systematiquement le
+        fichier APWP via un second dialogue)."""
         data_path = filedialog.askopenfilename(
             title="ROTA2GMT - data file (REF SITE AGE Polarity LAT LON DEC INC A95 [REF_pub])")
         if not data_path:
             return
-        apwp_path = filedialog.askopenfilename(title="ROTA2GMT - reference APWP file")
+
+        all_lines = read_text_lines(data_path)
+        apwp_path = None
+        continent = None
+        if all_lines and pu.first_line_is_apwp_path(all_lines[0]):
+            embedded, continent = pu.parse_apwp_reference_line(all_lines[0])
+            if continent:
+                self._afficher(f"Reference APWP continent/craton: {continent}\n")
+            apwp_root = pu.get_apwp_root()
+            apwp_path = pu.resolve_apwp_reference(embedded, apwp_root)
+            if apwp_path:
+                self._afficher(f"Reference APWP auto-located: {apwp_path}\n")
+            else:
+                self._afficher(f"Reference APWP from data file not found: {embedded}\n")
+                if apwp_root is None:
+                    messagebox.showinfo(
+                        "APWP folder",
+                        "This data file names a reference APWP curve by path, but that path "
+                        "doesn't exist on this machine.\n\nChoose your local APWP folder once "
+                        "(e.g. Appli_Paleomag/_APWP) so files like this one can find their curve "
+                        "automatically next time - Pmag Utilities > GMT rotation export > Set APWP folder...")
+                    root_dir = filedialog.askdirectory(title="Your local APWP reference folder")
+                    if root_dir:
+                        pu.set_apwp_root(root_dir)
+                        apwp_path = pu.resolve_apwp_reference(embedded, root_dir)
+                        if apwp_path:
+                            self._afficher(f"Reference APWP auto-located: {apwp_path}\n")
+            data_lines = all_lines[1:]  # ligne 1 consommee (chemin, pas une donnee) - meme comportement Fortran
+        else:
+            data_lines = all_lines
+
         if not apwp_path:
-            return
+            apwp_path = filedialog.askopenfilename(title="ROTA2GMT - reference APWP file")
+            if not apwp_path:
+                return
         agerange = self._prompt_floats("INTERVALLE DE TEMPS CHOISI, ex. \"0 300\" : ", 2)
         if agerange is None:
             return
@@ -1775,7 +1970,6 @@ class StereoUtilsApp:
             fflatcor = 1.0
 
         data_rows = []
-        data_lines = read_text_lines(data_path)
         data_lines, didx = split_header(
             data_lines, "iref", "site", "age", "polarity", "slat", "slon", "dec", "inc", "a95", "refpub")
         if all(k in didx for k in ("iref", "site", "age", "polarity", "slat", "slon", "dec", "inc", "a95")):
@@ -1805,6 +1999,35 @@ class StereoUtilsApp:
             else:
                 ref = "none"
             data_rows.append((iref, site, age, carpol, al, g, rdec, rinc, a95, ref))
+
+        if continent:
+            # Fichier de reference multi-continents (Torsvik_APWPs.csv /
+            # Vaes_2023_APWP.txt) - demande explicite utilisateur : lu
+            # DIRECTEMENT via stereo_pmagutils.read_apwp_table plutot que
+            # par le parseur generique 4-colonnes ci-dessous (format
+            # incompatible - plusieurs continents par ligne). PAS le
+            # decalage vlat=-vlat/vlon+180 de paleolati_from_apwp_table :
+            # c'est un ajustement propre a l'usage paleolatitude, sans
+            # rapport avec ROTA2GMT (qui attend les poles bruts, meme
+            # convention que les fichiers APWP simples deja geres ici).
+            try:
+                apwp_rows = [(age, lat, lon, p95) for age, lat, lon, p95 in pu.read_apwp_table(apwp_path, continent)]
+            except ValueError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            report, vec, pie = pu.rota2gmt_core(data_rows, apwp_rows, agemin, agemax, vgp2dec, dime, fflatcor)
+            self._afficher(report)
+            out_path = filedialog.asksaveasfilename(title="Save results (.res)", defaultextension=".res")
+            if out_path:
+                with open(out_path, "w", encoding="utf-8") as f:
+                    f.write(report)
+                base = out_path.rsplit(".", 1)[0]
+                with open(base + ".vec", "w", encoding="utf-8") as f:
+                    f.write(vec)
+                with open(base + ".pie", "w", encoding="utf-8") as f:
+                    f.write(pie)
+                self._afficher(f"saved {os.path.basename(base)}.res/.vec/.pie\n")
+            return
 
         apwp_rows = []
         apwp_lines = read_text_lines(apwp_path)
@@ -1843,6 +2066,22 @@ class StereoUtilsApp:
 
     def pu_helprota(self):
         self._afficher(pu.HELPROTA_TEXT)
+
+    def pu_set_apwp_root(self):
+        """Configure (ou change) le dossier racine APWP local - voir
+        stereo_pmagutils.set_apwp_root/resolve_apwp_reference. Une fois
+        defini, "Rotation vers GMT plot..." peut auto-localiser la
+        courbe de reference d'un fichier de donnees meme si le chemin
+        qu'il porte en ligne 1 vient d'une AUTRE machine, tant que les
+        deux dossiers _APWP suivent la meme organisation en sous-
+        dossiers (ex. "T-12/Europe[10Ma]")."""
+        current = pu.get_apwp_root()
+        root_dir = filedialog.askdirectory(
+            title="Your local APWP reference folder" + (f" (currently: {current})" if current else ""))
+        if not root_dir:
+            return
+        pu.set_apwp_root(root_dir)
+        self._afficher(f"APWP folder set to {root_dir}\n")
 
     # -- Site Map (site_map.py, port ad hoc - pas de source Fortran) ----------
 
@@ -1909,10 +2148,12 @@ class StereoUtilsApp:
         Earth en cache - affiche le texte EXACT de l'erreur rencontree
         (pas un message generique - demande explicite utilisateur, le
         premier message generique s'etant revele inutilisable pour
-        diagnostiquer l'echec reellement rencontre)."""
+        diagnostiquer l'echec reellement rencontre) - Clear Screen
+        systematique avant tout nouveau trace, voir plot_screen."""
         path, sites = self._pu_sitemap_open_prmag()
         if sites is None:
             return
+        self.clear_screen()
         _fig, got_basemap, error_text = build_site_map_figure(
             sites, fig=self.fig, title=os.path.splitext(os.path.basename(path))[0],
             basemap=self.sitemap_basemap.get())
@@ -2430,10 +2671,12 @@ class StereoUtilsApp:
         (Heslop et al. 2023) - equivalent PmagPy, avec un vrai generateur
         aleatoire, du menu Statistics > Bootstrap ellipse dont le portage
         natif Fortran a ete explicitement ecarte (RNG desactive dans le
-        source)."""
+        source) - Clear Screen systematique avant tout nouveau trace,
+        voir plot_screen."""
         if len(self.directions) < 3:
             messagebox.showwarning("Not enough data", "Load at least 3 directions first.")
             return
+        self.clear_screen()
         nb_s = self._console_input("number of bootstrap simulations (default=1000) : ", "1000")
         if nb_s is None:
             return
@@ -2463,12 +2706,131 @@ class StereoUtilsApp:
             f" confidence limits: [{res['lower_confidence_limit']:.1f}, {res['upper_confidence_limit']:.1f}]\n"
         )
 
+    def pmagpy_field_curve(self):
+        """Menu PmagPy-tools > Predicted field curve... (ajout hors source
+        Fortran, demande explicite utilisateur : "ajouter la creation des
+        series temporelles de champ magnetique a partir des modeles GUFM
+        et les modeles Cals3K, Cals10k, Schadiff etc; voir ce qui est deja
+        disponible dans PmagPy") : D/I/F predits a un site donne, du plus
+        vieux au plus recent, par le modele choisi - voir
+        stereo_pmagpy.predicted_field_curve (et sa docstring de section
+        pour ce qui a ete verifie/exclu, notamment GUFM1 et GGF100k) -
+        Clear Screen systematique avant tout nouveau trace, voir
+        plot_screen."""
+        lat = self._prompt_float("site latitude : ")
+        if lat is None:
+            return
+        lon = self._prompt_float("site longitude : ")
+        if lon is None:
+            return
+        alt = self._prompt_float("altitude (km) : ", 0.0)
+        if alt is None:
+            return
+        self.clear_screen()
+
+        choices = sp.field_model_choices()
+        menu_text = "".join(f"{i + 1}: {label}\n" for i, (label, _mod) in enumerate(choices))
+        self._afficher("\n--- Predicted field curve - available models ---\n" + menu_text)
+        choice_s = self._console_input("model number : ", "1")
+        if choice_s is None:
+            return
+        try:
+            idx = int(choice_s) - 1
+            if idx < 0 or idx >= len(choices):
+                raise ValueError
+        except ValueError:
+            messagebox.showerror("Error", "Invalid model number.")
+            return
+        model_label, mod = choices[idx]
+
+        dr = self._prompt_floats("start date, end date, step (years), e.g. \"1000 2000 10\" : ", 3)
+        if dr is None:
+            return
+        date_start, date_end, step = dr
+        if step <= 0:
+            messagebox.showerror("Error", "Step must be positive.")
+            return
+
+        points, warnings = sp.predicted_field_curve(lat, lon, alt, date_start, date_end, step, mod)
+        if warnings:
+            self._afficher(
+                f"{len(warnings)} date(s) skipped (outside this model's actual coverage):\n  "
+                + "\n  ".join(warnings[:10])
+                + ("\n  ..." if len(warnings) > 10 else "") + "\n"
+            )
+        if not points:
+            messagebox.showwarning("No result", "The chosen model has no data over this date range.")
+            return
+
+        path = sp.plot_field_curve(points, title=f"{model_label} @ lat={lat:.2f}, lon={lon:.2f}")
+        self._show_images([path])
+        self._afficher(f"{len(points)} point(s) computed with {model_label}.\n")
+
+        if messagebox.askyesno("Export", "Save this curve as a text file?"):
+            out_path = filedialog.asksaveasfilename(
+                title="Save predicted field curve", defaultextension=".txt",
+                initialfile="field_curve.txt",
+                filetypes=[("Text", "*.txt"), ("All files", "*.*")],
+            )
+            if out_path:
+                sp.write_field_curve_file(points, out_path, lat, lon, alt, model_label)
+                self._afficher(f"Field curve written to {out_path}\n")
+
+    def pmagpy_fishgen(self):
+        """Menu PmagPy-tools > Generate Fisher population (fishgen)...
+        (ajout hors source Fortran, demande explicite utilisateur :
+        "trouver dans PmagPy la generation de population de directions
+        avec une distribution fisherienne caracterisee par le parametre
+        k (fishgen)") : `ipmag.fishrot` (voir stereo_pmagpy.
+        generate_fisher_population) - la population generee est AJOUTEE a
+        self.directions (meme convention que "File [D-I]...") pour rester
+        directement utilisable par tout le reste de l'app (Plot stereo,
+        Fisher, Bootstrap ellipse...), avec un rappel immediat de la
+        moyenne de Fisher recalculee sur l'echantillon genere, pour
+        comparer k demande vs k retrouve sur un nombre fini de tirages."""
+        k = self._prompt_float("kappa (precision parameter) : ", 20.0)
+        if k is None:
+            return
+        if k <= 0:
+            messagebox.showerror("Error", "kappa must be > 0.")
+            return
+        n_s = self._console_input("number of directions to generate : ", "100")
+        if n_s is None:
+            return
+        try:
+            n = int(n_s)
+        except ValueError:
+            messagebox.showerror("Error", "Must be an integer.")
+            return
+        if n <= 0:
+            messagebox.showerror("Error", "Must be > 0.")
+            return
+        mean_di = self._prompt_floats("mean direction dec, inc, e.g. \"0 90\" : ", 2)
+        if mean_di is None:
+            return
+        mean_dec, mean_inc = mean_di
+        sym = self._prompt_symbol_only()
+        if sym is None:
+            return
+
+        pairs = sp.generate_fisher_population(k=k, n=n, dec=mean_dec, inc=mean_inc)
+        self.directions.extend((dec, inc, sym) for dec, inc in pairs)
+        res = sp.fisher_mean(pairs)
+        self._afficher(
+            f"{n} Fisher-distributed direction(s) generated (k={k:g}, target dec={mean_dec:.1f} "
+            f"inc={mean_inc:.1f}) and added to the direction list (total: {len(self.directions)}).\n"
+            f" recovered Fisher mean of this sample: n={res['n']}  dec={res['dec']:.1f}  inc={res['inc']:.1f}  "
+            f"k={res['k']:.1f}  a95={res['alpha95']:.1f}\n"
+        )
+
     def find_elongation(self):
         """Equivalent de `find_EI` (menu Pmag_Python > Find Elongation) :
-        `find_EI.py` -> `ipmag.find_ei`."""
+        `find_EI.py` -> `ipmag.find_ei` - Clear Screen systematique
+        avant tout nouveau trace, voir plot_screen."""
         if not self.directions:
             messagebox.showwarning("No data", "Load directions first.")
             return
+        self.clear_screen()
         nb_s = self._console_input("number of iteration (100 to 2000) : ", "2000")
         if nb_s is None:
             return
@@ -2487,11 +2849,14 @@ class StereoUtilsApp:
 
     def test_reversal_antipodal(self):
         """Equivalent de `test_antipodal` (menu Pmag_Python > Reversal
-        antipodality) : `revtest.py` -> `ipmag.reversal_test_bootstrap`."""
+        antipodality) : `revtest.py` -> `ipmag.reversal_test_bootstrap` -
+        Clear Screen systematique avant tout nouveau trace, voir
+        plot_screen."""
         if not self.directions:
             messagebox.showwarning(
                 "No data", "Load a file with normal and reverse directions first.")
             return
+        self.clear_screen()
         _res, files = sp.test_reversal_antipodal(self._di_pairs())
         self._show_images(files)
 
@@ -2535,7 +2900,8 @@ class StereoUtilsApp:
         """Equivalent de `common_mean` (menu Pmag_Python > Test common
         mean) : `common_mean.py` -> `ipmag.common_mean_bootstrap`. Demande
         2 jeux de donnees, comme le Fortran ("open the first/second data
-        set") - fichier ou saisie manuelle au choix pour chacun."""
+        set") - fichier ou saisie manuelle au choix pour chacun. Clear
+        Screen systematique avant tout nouveau trace, voir plot_screen."""
         self._afficher("comparison of two sets of direction to test if they have a common mean\n")
         dirs1 = self._load_or_enter_di("First data set (D-I)")
         if dirs1 is None:
@@ -2546,6 +2912,7 @@ class StereoUtilsApp:
         if len(dirs1) < 2 or len(dirs2) < 2:
             messagebox.showerror("Error", "Both data sets need at least 2 directions.")
             return
+        self.clear_screen()
         _res, files = sp.test_common_mean(dirs1, dirs2)
         self._show_images(files)
 
@@ -2629,6 +2996,7 @@ class StereoUtilsApp:
             nb = 1000
         if nb <= 0:
             nb = 1000
+        self.clear_screen()  # Clear Screen systematique avant tout nouveau trace, voir plot_screen.
         _res, files = sp.fold_test(data, nb=nb, bedding_error=angle)
         self._show_images(files)
         tc = sp.tilt_corrected_directions(data)
@@ -2644,7 +3012,8 @@ class StereoUtilsApp:
         within the graphic menu") : `plot_map_pts.py` ->
         `ipmag.make_orthographic_map` + `ipmag.plot_vgp` (les dec/inc en
         memoire representent directement longitude/latitude du VGP, meme
-        convention que le Fortran)."""
+        convention que le Fortran) - Clear Screen systematique avant
+        tout nouveau trace, voir plot_screen."""
         if not self.directions:
             messagebox.showwarning("No data", "Load directions (VGP lon/lat) first.")
             return
@@ -2664,6 +3033,7 @@ class StereoUtilsApp:
             lon = 0.0
         if lat < -90 or lat > 90:
             lat = 0.0
+        self.clear_screen()
         _res, files = sp.plot_vgps_on_map(self._di_pairs(), view_lat=lat, view_lon=lon)
         self._show_images(files)
 
@@ -2698,6 +3068,7 @@ class StereoUtilsApp:
             lon = 0.0
         if lat < -90 or lat > 90:
             lat = 0.0
+        self.clear_screen()  # Clear Screen systematique avant tout nouveau trace, voir plot_screen.
         _res, files = sp.plot_vgp_project(self.project_vgp_entries, view_lat=lat, view_lon=lon)
         self._show_images(files)
 
@@ -2785,7 +3156,7 @@ class StereoUtilsApp:
         explicite utilisateur "when we open the list, we should be able
         to go through and select the sample to plot")."""
         if not self.kt_sample_list:
-            self._showwarning("No sample list", "Open a sample list first (Open Sample List...).")
+            messagebox.showwarning("No sample list", "Open a sample list first (Open Sample List...).")
             return
         entries = list(self.kt_sample_list.values())
         lines = []
@@ -2807,10 +3178,10 @@ class StereoUtilsApp:
             try:
                 idx = int(choice_s)
             except ValueError:
-                self._showerror("Error", "Must be an integer.")
+                messagebox.showerror("Error", "Must be an integer.")
                 continue
             if not (1 <= idx <= len(entries)):
-                self._showerror("Error", f"Out of range (1-{len(entries)}).")
+                messagebox.showerror("Error", f"Out of range (1-{len(entries)}).")
                 continue
             self._kt_process_list_entry(entries[idx - 1])
 
@@ -2823,13 +3194,13 @@ class StereoUtilsApp:
         base_dir = self.kt_list_dir or "."
         path = os.path.join(base_dir, entry.filename)
         if not os.path.exists(path):
-            self._showerror("Error", f"File not found: {path}")
+            messagebox.showerror("Error", f"File not found: {path}")
             return
         curve = read_cur_file(path)
 
         corrected, msg = self._kt_correct_with_entry(curve, entry, base_dir)
         if corrected is None:
-            self._showerror("Error", f"{entry.filename}: {msg}")
+            messagebox.showerror("Error", f"{entry.filename}: {msg}")
             return
         curve = corrected
 
@@ -2865,7 +3236,7 @@ class StereoUtilsApp:
         utilisateur - "999 indicate that a whole empty vessel should be
         used")."""
         if self.kt_curve is None:
-            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            messagebox.showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
             return
         entry = self._kt_lookup_entry()
 
@@ -2873,7 +3244,7 @@ class StereoUtilsApp:
             base_dir = self.kt_list_dir or os.path.dirname(self.kt_curve.path)
             corrected, msg = self._kt_correct_with_entry(self.kt_curve, entry, base_dir)
             if corrected is None:
-                self._showerror("Error", msg)
+                messagebox.showerror("Error", msg)
                 return
             self.kt_curve = corrected
             self._afficher(f"Furnace correction applied ({msg}).\n")
@@ -2886,7 +3257,7 @@ class StereoUtilsApp:
         try:
             zerodia = float(zerodia_s)
         except ValueError:
-            self._showerror("Error", "Must be a number.")
+            messagebox.showerror("Error", "Must be a number.")
             return
         self.kt_curve = apply_furnace_correction(self.kt_curve, zerodia)
         self._afficher(f"Furnace correction applied (subtracted {zerodia:g}).\n")
@@ -2895,10 +3266,10 @@ class StereoUtilsApp:
         """Equivalent de `normas` (CurieOSX_x.f95:293-330, voir
         curie_kt.normalize_by_mass)."""
         if self.kt_curve is None:
-            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            messagebox.showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
             return
         if self.kt_curve.normalized is not None:
-            self._showwarning("Already normalized", "This curve is already normalized.")
+            messagebox.showwarning("Already normalized", "This curve is already normalized.")
             return
         entry = self._kt_lookup_entry()
         default = f"{entry.masse:g}" if entry is not None and entry.masse else ""
@@ -2908,10 +3279,10 @@ class StereoUtilsApp:
         try:
             mass_mg = float(mass_s)
         except ValueError:
-            self._showerror("Error", "Must be a number.")
+            messagebox.showerror("Error", "Must be a number.")
             return
         if mass_mg <= 0.0:
-            self._showerror("Error", "Mass must be > 0.")
+            messagebox.showerror("Error", "Mass must be > 0.")
             return
         self.kt_curve = normalize_by_mass(self.kt_curve, mass_mg)
         self._afficher(f"Normalized by mass ({mass_mg:g} mg) - values in 1e-6 m³/kg.\n")
@@ -2920,10 +3291,10 @@ class StereoUtilsApp:
         """Equivalent de `norvol` (CurieOSX_x.f95:332-372, voir
         curie_kt.normalize_by_volume)."""
         if self.kt_curve is None:
-            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            messagebox.showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
             return
         if self.kt_curve.normalized is not None:
-            self._showwarning("Already normalized", "This curve is already normalized.")
+            messagebox.showwarning("Already normalized", "This curve is already normalized.")
             return
         entry = self._kt_lookup_entry()
         default = f"{entry.suscep:g}" if entry is not None and entry.suscep else ""
@@ -2933,7 +3304,7 @@ class StereoUtilsApp:
         try:
             suscep = float(suscep_s)
         except ValueError:
-            self._showerror("Error", "Must be a number.")
+            messagebox.showerror("Error", "Must be a number.")
             return
         is_cur = os.path.splitext(self.kt_curve.path)[1].upper() == ".CUR"
         self.kt_curve = normalize_by_volume(self.kt_curve, suscep, is_cur=is_cur)
@@ -2944,7 +3315,7 @@ class StereoUtilsApp:
         curie_point_second_derivative pour l'ecart avec le nom "Tauxe
         method")."""
         if self.kt_curve is None:
-            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            messagebox.showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
             return
         self.kt_curie_heating, self.kt_curie_cooling = curie_point_second_derivative(self.kt_curve)
         heat = f"{self.kt_curie_heating:.1f}" if self.kt_curie_heating is not None else "n/a"
@@ -2959,10 +3330,12 @@ class StereoUtilsApp:
         `tracerklyhot`/`tracerklycold` (voir curie_kt.build_kt_figure -
         matplotlib direct, pas plotlib.PlotContext, demande explicite
         utilisateur "Faire les graphics sans passer par mes anciennes
-        fonctions (plot, symbol etc)")."""
+        fonctions (plot, symbol etc)") - Clear Screen systematique avant
+        tout nouveau trace, voir plot_screen."""
         if self.kt_curve is None:
-            self._showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
+            messagebox.showwarning("No K-T curve", "Open a .CUR/.CLW file first.")
             return
+        self.clear_screen()
         build_kt_figure(
             self.kt_curve, curie_heating=self.kt_curie_heating,
             curie_cooling=self.kt_curie_cooling, fig=self.fig)
@@ -3021,10 +3394,10 @@ class StereoUtilsApp:
         try:
             v = float(s)
         except ValueError:
-            self._showerror("Error", "Must be a number.")
+            messagebox.showerror("Error", "Must be a number.")
             return
         if not (0.0 < v < 1.0):
-            self._showerror("Error", "Must be between 0 and 1.")
+            messagebox.showerror("Error", "Must be between 0 and 1.")
             return
         self.hyst_valsat_frac = v
         self._afficher(f"Paramagnetic fit threshold set to {v:g}.\n")
@@ -3039,7 +3412,7 @@ class StereoUtilsApp:
         `self.hyst_format`), calcule Js/Jrs/Hc/Hcr et trace - boucle
         jusqu'a "0"/Escape."""
         if not self.hyst_sample_list:
-            self._showwarning(
+            messagebox.showwarning(
                 "No sample list", "Open an AGM or VSM sample list first.")
             return
         entries = list(self.hyst_sample_list.values())
@@ -3060,10 +3433,10 @@ class StereoUtilsApp:
             try:
                 idx = int(choice_s)
             except ValueError:
-                self._showerror("Error", "Must be an integer.")
+                messagebox.showerror("Error", "Must be an integer.")
                 continue
             if not (1 <= idx <= len(entries)):
-                self._showerror("Error", f"Out of range (1-{len(entries)}).")
+                messagebox.showerror("Error", f"Out of range (1-{len(entries)}).")
                 continue
             self._hyst_process_entry(entries[idx - 1])
 
@@ -3075,7 +3448,7 @@ class StereoUtilsApp:
                 loop_path = os.path.join(self.hyst_list_dir, entry.filename)
                 backfield_path = loop_path + "-r"
                 if not (os.path.exists(loop_path) and os.path.exists(backfield_path)):
-                    self._showerror(
+                    messagebox.showerror(
                         "Error", f"File(s) not found for {entry.filename} "
                         f"(expected {entry.filename} and {entry.filename}-r).")
                     return
@@ -3084,19 +3457,19 @@ class StereoUtilsApp:
             else:
                 hyst_path, backfield_path = vsm_paths_for(self.hyst_list_dir, entry.filename)
                 if not (os.path.exists(hyst_path) and os.path.exists(backfield_path)):
-                    self._showerror(
+                    messagebox.showerror(
                         "Error", f"File(s) not found for {entry.filename} "
                         f"(expected \"{entry.filename} - 1.csv\" and \"{entry.filename} - 2.csv\").")
                     return
                 loop = read_vsm_csv(hyst_path)
                 backfield = read_vsm_csv(backfield_path)
         except OSError as e:
-            self._showerror("Error", f"{entry.filename}: {e}")
+            messagebox.showerror("Error", f"{entry.filename}: {e}")
             return
 
         res = compute_hysteresis(loop, backfield, entry.masse, valsat_frac=self.hyst_valsat_frac)
         if res is None:
-            self._showerror(
+            messagebox.showerror(
                 "Error",
                 f"{entry.filename}: could not compute hysteresis parameters "
                 "(loop too short, or no point above the high-field threshold).")
@@ -3106,6 +3479,7 @@ class StereoUtilsApp:
         self.hyst_max_field = None  # reinitialise l'echelle X pour un nouvel echantillon
         self._afficher(format_hysteresis_result(res))
         self._hyst_show_pmagpy_crosscheck(res)
+        self.clear_screen()  # nouvel echantillon - Clear Screen systematique, voir plot_screen.
         self.hyst_refresh_plot()
 
     def _hyst_show_pmagpy_crosscheck(self, res):
@@ -3147,10 +3521,10 @@ class StereoUtilsApp:
         try:
             name, mass_mg, loops = read_vftb_file(path)
         except OSError as e:
-            self._showerror("Error", f"{os.path.basename(path)}: {e}")
+            messagebox.showerror("Error", f"{os.path.basename(path)}: {e}")
             return
         if not loops:
-            self._showerror("Error", f"{os.path.basename(path)}: no \"Set\" block found.")
+            messagebox.showerror("Error", f"{os.path.basename(path)}: no \"Set\" block found.")
             return
         if mass_mg is None:
             mass_s = self._console_input(
@@ -3160,7 +3534,7 @@ class StereoUtilsApp:
             try:
                 mass_mg = float(mass_s)
             except ValueError:
-                self._showerror("Error", "Mass must be a number.")
+                messagebox.showerror("Error", "Mass must be a number.")
                 return
             # "mag" a ete laisse en emu/g faute de masse au moment de la
             # lecture (voir read_vftb_file) - reconversion manuelle ici.
@@ -3171,7 +3545,7 @@ class StereoUtilsApp:
         backfield = loops[1] if len(loops) > 1 else None
         res = compute_hysteresis(loop, backfield, mass_mg, valsat_frac=self.hyst_valsat_frac)
         if res is None:
-            self._showerror(
+            messagebox.showerror(
                 "Error",
                 f"{name}: could not compute hysteresis parameters "
                 "(loop too short, or no point above the high-field threshold).")
@@ -3181,6 +3555,7 @@ class StereoUtilsApp:
         self.hyst_max_field = None
         self._afficher(format_hysteresis_result(res))
         self._hyst_show_pmagpy_crosscheck(res)
+        self.clear_screen()  # nouvel echantillon - Clear Screen systematique, voir plot_screen.
         self.hyst_refresh_plot()
 
     def hyst_refresh_plot(self):
@@ -3227,10 +3602,10 @@ class StereoUtilsApp:
             try:
                 v = float(s)
             except ValueError:
-                self._showerror("Error", "Must be a number.")
+                messagebox.showerror("Error", "Must be a number.")
                 return
             if v <= 0:
-                self._showerror("Error", "Must be > 0.")
+                messagebox.showerror("Error", "Must be > 0.")
                 return
             self.hyst_max_field = v
         self.hyst_refresh_plot()

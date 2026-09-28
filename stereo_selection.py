@@ -342,6 +342,48 @@ def read_great_circle_file(path: str) -> List[Tuple[float, float, float, float, 
     return out
 
 
+# ---------------------------------------------------------------------------
+# Ecriture - contrepartie des lecteurs ci-dessus (ajout hors source Fortran,
+# demande explicite utilisateur : "pouvoir sauvegarder dans des fichiers les
+# donnees en memoire si necessaire. ajouter un menu save data") : le menu
+# "Load from file" n'avait jusqu'ici aucun "Save" symetrique pour
+# self.directions/self.means/self.great_circles (contrairement au Project,
+# deja sauvegardable via "Export to Project"). En-tete "#dec inc ..." ecrit
+# a chaque fois (memes noms canoniques que FIELD_ALIASES ci-dessus) pour que
+# read_di_file/read_di_a95_file/read_great_circle_file relisent le fichier
+# ECRIT ICI sans ambiguite de colonnes, plutot que de dependre d'un
+# `skip_columns` fragile a la relecture.
+# ---------------------------------------------------------------------------
+
+def write_di_file(directions: Sequence[Tuple[float, float, str]], path: str) -> None:
+    """(dec,inc,symbol) par ligne - symbole ecrit a titre informatif
+    seulement (read_di_file ne lit que dec/inc ; le symbole est redemande
+    au chargement, voir app._prompt_path_and_symbol)."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("#dec\tinc\tsymbol\n")
+        for dec, inc, sym in directions:
+            f.write(f"{dec:.2f}\t{inc:.2f}\t{sym}\n")
+
+
+def write_di_a95_file(means: Sequence[Tuple[float, float, float, str]], path: str) -> None:
+    """(dec,inc,a95,symbol) par ligne - contrepartie de read_di_a95_file."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("#dec\tinc\ta95\tsymbol\n")
+        for dec, inc, alph, sym in means:
+            f.write(f"{dec:.2f}\t{inc:.2f}\t{alph:.2f}\t{sym}\n")
+
+
+def write_great_circle_file(
+    great_circles: Sequence[Tuple[float, float, float, float, float, float]], path: str,
+) -> None:
+    """(glon,glat,ad1,ai1,ad2,ai2) par ligne - contrepartie de
+    read_great_circle_file."""
+    with open(path, "w", encoding="utf-8") as f:
+        f.write("#glon\tglat\tad1\tai1\tad2\tai2\n")
+        for glon, glat, ad1, ai1, ad2, ai2 in great_circles:
+            f.write(f"{glon:.2f}\t{glat:.2f}\t{ad1:.2f}\t{ai1:.2f}\t{ad2:.2f}\t{ai2:.2f}\n")
+
+
 class VgpProjectEntry(NamedTuple):
     """Un VGP a tracer sur une carte (voir stereo_pmagpy.plot_vgp_project) -
     equivalent "carte" de stereo_project.ProjectEntry (reseau stereo) :

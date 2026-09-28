@@ -524,7 +524,7 @@
         <li><strong>Retouch</strong><span>Edit symbol/color/info by hand in the project file, reload</span></li>
       </ol>
       <div class="callout">
-        <strong>Almost no keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, nearly every command here is menu-only — the one exception is <strong>Hysteresis → Normalize Plot</strong> (<code>Cmd+N</code>/<code>Ctrl+Shift+N</code>), the first shortcut added to this app.
+        <strong>A handful of keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, most commands here are still menu-only, but the 7 most frequently used ones now have a shortcut: <strong>Hysteresis → Normalize Plot</strong> (<code>Cmd+N</code>/<code>Ctrl+Shift+N</code>, the first one added), <strong>File [D-I]…</strong> (<code>Cmd+O</code>/<code>Ctrl+Shift+O</code>), <strong>Manual [D-I]…</strong> (<code>Cmd+Shift+M</code>/<code>Ctrl+Shift+M</code>), <strong>Plot stereo</strong> (<code>Cmd+P</code>/<code>Ctrl+Shift+P</code>), <strong>Initialize…</strong> (<code>Cmd+I</code>/<code>Ctrl+Shift+I</code>), <strong>List-data</strong> (<code>Cmd+L</code>/<code>Ctrl+Shift+L</code>), and <strong>Statistics → Fisher Statistics…</strong> (<code>Cmd+F</code>/<code>Ctrl+Shift+F</code>, not PmagPy-tools’ own Fisher).
       </div>
     </section>
 
@@ -534,7 +534,7 @@
       <p class="menu-desc">Build the three working lists (directions / means / great circles) that everything else — Graphics, Statistics — plots or tests.</p>
 
       <div class="item" id="data-load">
-        <div class="label">File [D-I]...</div>
+        <div class="label">File [D-I]... <span class="mono">(Cmd+O / Ctrl+Shift+O)</span></div>
         <div class="desc">Loads dec/inc pairs from a file into <strong>directions</strong>. Prompts for a path (between consecutive points, for the connecting arc drawn on the stereonet) and a symbol, applied to every point loaded this way.</div>
       </div>
       <div class="item">
@@ -553,8 +553,22 @@
         <div class="label">File [great circle]...</div>
         <div class="desc">Loads great-circle poles (glon, glat) into <strong>great circles</strong>, with an optional sector (ad1, ai1, ad2, ai2) restricting the drawn arc — otherwise the full circle is drawn.</div>
       </div>
+
+      <h3 class="group" id="data-save">Save data</h3>
+      <div class="item">
+        <div class="label">Save [D-I]...</div>
+        <div class="desc">Writes the current <strong>directions</strong> list to a text file (dec, inc, symbol — with a header row), the exact format <strong>File [D-I]...</strong> reads back.</div>
+      </div>
+      <div class="item">
+        <div class="label">Save [D-I-a95]...</div>
+        <div class="desc">Writes the current <strong>means</strong> list (dec, inc, α95, symbol), the format <strong>File [D-I-a95]...</strong> reads back.</div>
+      </div>
+      <div class="item">
+        <div class="label">Save [great circle]...</div>
+        <div class="desc">Writes the current <strong>great circles</strong> list (glon, glat, ad1, ai1, ad2, ai2), the format <strong>File [great circle]...</strong> reads back. (The Project — <code>self.project_entries</code>/VGP block — already has its own save: <strong>Project → Export to Project</strong>.)</div>
+      </div>
       <div class="item" id="data-manual">
-        <div class="label">Manual [D-I]...</div>
+        <div class="label">Manual [D-I]... <span class="mono">(Cmd+Shift+M / Ctrl+Shift+M)</span></div>
         <div class="desc">Types dec/inc pairs in one at a time (loop, Escape to stop), appended to <strong>directions</strong>.</div>
       </div>
       <div class="item">
@@ -566,7 +580,7 @@
         <div class="desc">Types great-circle poles in one at a time, appended to <strong>great circles</strong>.</div>
       </div>
       <div class="item" id="data-edit">
-        <div class="label">List-data</div>
+        <div class="label">List-data <span class="mono">(Cmd+L / Ctrl+Shift+L)</span></div>
         <div class="desc">Lists everything currently in all three working lists — directions, means, great circles — with their index numbers, needed by the Delete commands below.</div>
       </div>
       <div class="item">
@@ -582,7 +596,7 @@
         <div class="desc">Removes one entry from <strong>great circles</strong> by its list number.</div>
       </div>
       <div class="item">
-        <div class="label">Initialize...</div>
+        <div class="label">Initialize... <span class="mono">(Cmd+I / Ctrl+Shift+I)</span></div>
         <div class="desc">Clears one or more of the three working lists, after confirmation.</div>
       </div>
       <div class="item" id="data-help">
@@ -597,7 +611,7 @@
       <p class="menu-desc">Everything that draws something — the native stereonet, the Project/VGP-Project systems, projection settings, and SVG export — gathered into one menu (originally split across "Command" and "Projection").</p>
 
       <div class="item" id="graphics-plot">
-        <div class="label">Plot stereo</div>
+        <div class="label">Plot stereo <span class="mono">(Cmd+P / Ctrl+Shift+P)</span></div>
         <div class="desc">Draws the stereonet frame plus the current <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists, in the canvas built into the window. This is the everyday plot command.</div>
       </div>
       <div class="item">
@@ -614,7 +628,7 @@
       </div>
       <div class="item">
         <div class="label">Clear Screen</div>
-        <div class="desc">Clears the plot canvas.</div>
+        <div class="desc">Clears the plot canvas. Every plot-producing command in this app (all of <strong>Graphics</strong>’ Plot commands, <strong>PmagPy-tools</strong>’ statistical tests, <strong>K-T</strong> and <strong>Hysteresis</strong> on a new sample, <strong>Pmag Utilities → Site Map → Plot sites</strong>) now calls this automatically first — they all share the same canvas, and a few plot types (multi-image ones especially) leave it a different size than a stereonet, which used to bleed through into the next unrelated plot until Clear Screen was clicked by hand. Re-drawing the <em>same</em> plot with tweaked settings (Hysteresis’ Normalize Plot toggle, or clicking the field-max axis) does not re-clear — only a genuinely new plot does.</div>
       </div>
       <div class="item">
         <div class="label">Graph title...</div>
@@ -658,7 +672,7 @@
       <p class="menu-desc">Directional statistics on the current <strong>directions</strong>/<strong>great circles</strong> lists — mostly native ports of the original Fortran's own routines (<code>stereo_stats.py</code>), independent of the PmagPy-backed tests under <strong>PmagPy-tools</strong>.</p>
 
       <div class="item" id="statistics-fisher">
-        <div class="label">Fisher Statistics...</div>
+        <div class="label">Fisher Statistics... <span class="mono">(Cmd+F / Ctrl+Shift+F)</span></div>
         <div class="desc">Fisher (1953) mean of the current directions (≥2 needed), with an optional angular cutoff to drop points too far from the mean before finalizing it. The resulting mean is appended to <strong>means</strong>. Port of <code>ANGU</code>.</div>
       </div>
       <div class="item">
@@ -778,7 +792,7 @@
       <h3 class="group" id="pu-paleolat">Paleolatitude</h3>
       <div class="item">
         <div class="label">Paleolatitude at one site (file)...</div>
-        <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file.</div>
+        <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file. If the chosen file is one of the two bundled multi-continent curves (Torsvik et al., 2012 or Vaes et al., 2023 — recognized by file name), it asks for a continent/craton instead of a polarity: the original Fortran (<code>paleolati</code>) never asked for polarity on these two curves, applying a fixed pole-convention flip instead, which is reproduced here as-is.</div>
       </div>
       <div class="item">
         <div class="label">Inclination a95 to Plat and err...</div>
@@ -788,11 +802,15 @@
       <h3 class="group" id="pu-gmt">GMT rotation export</h3>
       <div class="item">
         <div class="label">Rotation vers GMT plot...</div>
-        <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script.</div>
+        <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script (<code>.vec</code>/<code>.pie</code> now each start with a <code>#</code> header line naming their columns). The reference APWP can be a plain (age, pole_lat, pole_lon, p95) file of your own, or one of the two bundled multi-continent curves — Torsvik et al. (2012) or Vaes et al. (2023) — picked by continent/craton (see <strong>Aide Rotation</strong> for the exact list and file layout). If the data file's very first line is a path (optionally followed by a continent/craton name, e.g. <code>full_path/Torsvik_APWPs.csv Europe</code>), that reference is auto-located instead of asking for it — first by that literal path, then, if it doesn't exist on this machine, by re-joining its last two path segments (parent folder + filename) under your configured APWP folder (see <strong>Set APWP folder...</strong>) — this is how an old data file written on a different computer still finds its curve here.</div>
       </div>
       <div class="item">
         <div class="label">Aide Rotation</div>
-        <div class="desc">Static help text describing the file formats <strong>Rotation vers GMT plot</strong> expects.</div>
+        <div class="desc">Static help text describing the file formats <strong>Rotation vers GMT plot</strong> expects, including the Torsvik/Vaes continent list and the "path + continent" first-line convention.</div>
+      </div>
+      <div class="item">
+        <div class="label">Set APWP folder...</div>
+        <div class="desc">Sets (or changes) the local root folder used to auto-locate a reference APWP curve named by path in a data file's first line, when that literal path doesn't exist on this machine (e.g. the file was written on someone else's computer). Stored in <code>~/.stereoutils_py_prefs.json</code>; asked automatically the first time auto-location needs it and isn't yet set.</div>
       </div>
 
       <h3 class="group" id="pu-sitemap">Site Map</h3>
@@ -897,7 +915,7 @@
 
       <div class="item">
         <div class="label">Fisher</div>
-        <div class="desc">Fisher (1953) mean of the current directions via PmagPy's own <code>pmag.fisher_mean</code> — no mode separation (normal/reverse), unlike <strong>Statistics → Fisher Statistics</strong>'s native <code>ANGU</code>-based equivalent.</div>
+        <div class="desc">Fisher (1953) mean of the current directions via PmagPy's own <code>pmag.fisher_mean</code> — no mode separation (normal/reverse), unlike <strong>Statistics → Fisher Statistics</strong>'s native <code>ANGU</code>-based equivalent. One of the 6 shortcut-bound commands in this app (see the callout near the top of this guide).</div>
       </div>
       <div class="item">
         <div class="label">Bootstrap ellipse</div>
@@ -922,6 +940,14 @@
       <div class="item">
         <div class="label">Mean Inclination</div>
         <div class="desc">McFadden &amp; Reid (1982) inclination-only mean via PmagPy's <code>pmag.doincfish</code> — same method as <strong>Statistics → Mean Inclination only</strong>, independent implementation.</div>
+      </div>
+      <div class="item">
+        <div class="label">Predicted field curve...</div>
+        <div class="desc">Not a port — added on request. Predicted D/I/F time series at a chosen site from a global or paleosecular-variation field model (IGRF14, GUFM1, ARCH3k, CALS3k.4b, CALS10k.1b/.2, PFM9k, HFM.OL1.A1, SHA.DIF.14k, SHAWQ2k, SHAWQ-Iberia — picked from a numbered list showing each model's real date range, read live from PmagPy's own coefficient tables), via <code>pmag.doigrf</code>/<code>ipmag.igrf</code> for every model but GUFM1, which this app wires in directly (<code>pmag.magsyn</code>) since PmagPy's own API doesn't expose it. Plots Dec/Inc/Intensity vs. date (declination shown wrapped to −60°/+60°, natural for a recent-field curve) and offers to save the series as a text file. GGF100k is left out: a real bug in this copy of PmagPy (<code>coefficients.get_ggf100k()</code> — its epoch list and coefficient array don't have matching lengths) makes it fail on most dates.</div>
+      </div>
+      <div class="item">
+        <div class="label">Generate Fisher population (fishgen)...</div>
+        <div class="desc">Not a port — no native Fortran <code>fishgen</code> exists in this project. Generates <em>n</em> Fisher-distributed synthetic directions (precision <em>k</em>, mean dec/inc) via PmagPy's <code>ipmag.fishrot</code>, appended to <strong>directions</strong> (same convention as <strong>File [D-I]...</strong>) so they can immediately be plotted or fed into Fisher/Bootstrap ellipse. Reports the Fisher mean recomputed from the generated sample right away, to compare the requested <em>k</em> against what a finite draw actually recovers.</div>
       </div>
     </section>
 
@@ -983,7 +1009,7 @@
       </div>
       <div class="item">
         <div class="label">Normalize Plot <span class="mono">(Cmd+N / Ctrl+Shift+N)</span></div>
-        <div class="desc">Each of the three plotted curves (raw loop, slope-corrected loop, remanence/DCD) is normalized independently, by its own maximum — not a single shared reference — so each saturates near ±1 regardless of the other two. The one keyboard shortcut in this application.</div>
+        <div class="desc">Each of the three plotted curves (raw loop, slope-corrected loop, remanence/DCD) is normalized independently, by its own maximum — not a single shared reference — so each saturates near ±1 regardless of the other two. The first keyboard shortcut added to this application (see the callout near the top of this guide for the others).</div>
       </div>
       <div class="item">
         <div class="label">Click the X-axis</div>
