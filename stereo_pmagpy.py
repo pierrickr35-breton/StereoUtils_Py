@@ -34,6 +34,8 @@ import os
 import tempfile
 from typing import List, Optional, Tuple
 
+from stereo_selection import read_text_lines, split_header
+
 # cartopy (utilise par ipmag.make_orthographic_map pour "Plot VGPs on Map")
 # telecharge les traits de cote Natural Earth au premier usage - la version
 # Python.framework de python.org sur macOS n'a pas de certificats CA lies au
@@ -509,11 +511,67 @@ def predicted_field_curve(
     return points, warnings
 
 
-def plot_field_curve(points: List[Tuple[float, float, float, float]], title: str = ""):
+def read_field_curve_data(path: str) -> List[Tuple[float, float, float, float, Optional[float], Optional[float]]]:
+    """Points reels (age, dec, inc, a95, intensity_uT_ou_None,
+    dintensity_ou_None) a superposer a une courbe predite - demande
+    explicite utilisateur ("est-ce possible de plotter des donnees en
+    comparaison des modeles de champ, menu Predicted field curve").
+    Colonnes reperees par en-tete si present (age/dec/inc/a95, +
+    intensity/dintensity optionnelles), sinon position 0-3(-5) - meme
+    convention que le reste de ce projet (voir stereo_selection.
+    split_header). Une ligne sans intensity/dintensity lisible laisse
+    simplement ces deux valeurs a None (superposee aux 2 premiers
+    sous-graphiques seulement, pas au 3e)."""
+    lines = read_text_lines(path)
+    data_lines, idx = split_header(lines, "age", "dec", "inc", "a95", "intensity", "dintensity")
+    if all(k in idx for k in ("age", "dec", "inc", "a95")):
+        i_age, i_dec, i_inc, i_a95 = idx["age"], idx["dec"], idx["inc"], idx["a95"]
+        i_f, i_df = idx.get("intensity"), idx.get("dintensity")
+    else:
+        i_age, i_dec, i_inc, i_a95, i_f, i_df = 0, 1, 2, 3, 4, 5
+
+    out = []
+    for line in data_lines:
+        line = line.strip()
+        if not line or line.startswith("!") or line.startswith("#"):
+            continue
+        parts = line.split()
+        if len(parts) <= max(i_age, i_dec, i_inc, i_a95):
+            continue
+        try:
+            age = float(parts[i_age])
+            dec, inc, a95 = float(parts[i_dec]), float(parts[i_inc]), float(parts[i_a95])
+        except ValueError:
+            continue
+        f_ut = dfut = None
+        if i_f is not None and len(parts) > i_f:
+            try:
+                f_ut = float(parts[i_f])
+                if i_df is not None and len(parts) > i_df:
+                    dfut = float(parts[i_df])
+            except ValueError:
+                f_ut = dfut = None
+        out.append((age, dec, inc, a95, f_ut, dfut))
+    return out
+
+
+def plot_field_curve(
+    points: List[Tuple[float, float, float, float]], title: str = "",
+    data_points: Optional[List[Tuple[float, float, float, float, Optional[float], Optional[float]]]] = None,
+):
     """3 sous-graphiques empiles (Dec/Inc/Intensity vs date), meme
     convention de sauvegarde (PNG dans un dossier temporaire, chemin
     retourne pour `app._show_images`) que les autres fonctions de trace de
-    ce module."""
+    ce module.
+
+    `data_points` (optionnel - voir read_field_curve_data) : donnees REELLES
+    datees (age, dec, inc, a95, intensity_ou_None, dintensity_ou_None),
+    superposees a la courbe predite en barres d'erreur - demande explicite
+    utilisateur ("plotter des donnees en comparaison des modeles de
+    champ"). L'intensite (3e sous-graphique) n'est marquee que pour les
+    points qui en portent une - un site purement directionnel reste donc
+    superpose sur Dec/Inc seulement, sans laisser croire a une intensite
+    nulle sur le 3e sous-graphique."""
     plt.close("all")
     dates = [p[0] for p in points]
     # Declinaison ramenee a [-180, 180] (300 -> -60) plutot que le [0,360)
@@ -529,7 +587,7 @@ def plot_field_curve(points: List[Tuple[float, float, float, float]], title: str
     inc = [p[2] for p in points]
     f_ut = [p[3] for p in points]
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 8))
-    axes[0].plot(dates, dec, "b.-")
+    axes[0].plot(dates, dec, "b.-", label="predicted" if data_points else None)
     axes[0].set_ylabel("Declination (°)")
     axes[0].set_ylim(-60.0, 60.0)
     axes[1].plot(dates, inc, "r.-")
@@ -537,6 +595,19 @@ def plot_field_curve(points: List[Tuple[float, float, float, float]], title: str
     axes[2].plot(dates, f_ut, "g.-")
     axes[2].set_ylabel("Intensity (µT)")
     axes[2].set_xlabel("Date (years CE)")
+    if data_points:
+        d_ages = [p[0] for p in data_points]
+        d_dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in data_points]
+        d_inc = [p[2] for p in data_points]
+        d_a95 = [p[3] for p in data_points]
+        axes[0].errorbar(d_ages, d_dec, yerr=d_a95, fmt="ko", ms=4, capsize=3, label="data")
+        axes[1].errorbar(d_ages, d_inc, yerr=d_a95, fmt="ko", ms=4, capsize=3)
+        f_ages = [p[0] for p in data_points if p[4] is not None]
+        f_vals = [p[4] for p in data_points if p[4] is not None]
+        f_errs = [p[5] if p[5] is not None else 0.0 for p in data_points if p[4] is not None]
+        if f_vals:
+            axes[2].errorbar(f_ages, f_vals, yerr=f_errs, fmt="ko", ms=4, capsize=3)
+        axes[0].legend(loc="best", fontsize=8)
     if title:
         axes[0].set_title(title)
     for ax in axes:

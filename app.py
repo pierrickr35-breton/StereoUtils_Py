@@ -2716,7 +2716,12 @@ class StereoUtilsApp:
         stereo_pmagpy.predicted_field_curve (et sa docstring de section
         pour ce qui a ete verifie/exclu, notamment GUFM1 et GGF100k) -
         Clear Screen systematique avant tout nouveau trace, voir
-        plot_screen."""
+        plot_screen.
+
+        Superposition optionnelle de donnees reelles datees (demande
+        explicite utilisateur "plotter des donnees en comparaison des
+        modeles de champ") - voir stereo_pmagpy.read_field_curve_data/
+        plot_field_curve."""
         lat = self._prompt_float("site latitude : ")
         if lat is None:
             return
@@ -2762,9 +2767,29 @@ class StereoUtilsApp:
             messagebox.showwarning("No result", "The chosen model has no data over this date range.")
             return
 
-        path = sp.plot_field_curve(points, title=f"{model_label} @ lat={lat:.2f}, lon={lon:.2f}")
+        data_points = None
+        if messagebox.askyesno(
+            "Compare with data",
+            "Overlay real dated data (age, dec, inc, a95, [intensity, dintensity]) on this curve?",
+        ):
+            data_path = filedialog.askopenfilename(
+                title="Data file to compare (age dec inc a95 [intensity dintensity])")
+            if data_path:
+                try:
+                    data_points = sp.read_field_curve_data(data_path)
+                except Exception as e:
+                    messagebox.showerror("Error", f"Could not read {data_path}:\n{e}")
+                    data_points = None
+                if data_points is not None and not data_points:
+                    messagebox.showwarning("No data", "No usable row found in this file.")
+                    data_points = None
+
+        path = sp.plot_field_curve(
+            points, title=f"{model_label} @ lat={lat:.2f}, lon={lon:.2f}", data_points=data_points)
         self._show_images([path])
         self._afficher(f"{len(points)} point(s) computed with {model_label}.\n")
+        if data_points:
+            self._afficher(f"{len(data_points)} data point(s) overlaid from {os.path.basename(data_path)}.\n")
 
         if messagebox.askyesno("Export", "Save this curve as a text file?"):
             out_path = filedialog.asksaveasfilename(
