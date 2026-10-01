@@ -868,7 +868,7 @@
       <h3 class="group" id="pu-paleoint">Paleointensity</h3>
       <div class="item">
         <div class="label">mean paleointensity...</div>
-        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — which can now be a real <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side, matching the original Fortran's own three-row table. The old plain-format file keeps its original behavior: the whole file averaged in one shot, no selection step.</div>
+        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — which can now be a real <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side, matching the original Fortran's own three-row table. The old plain-format file keeps its original behavior: the whole file averaged in one shot, no selection step. Opening this menu explains both accepted formats in the console first (the file-open dialog's own title is often not shown by macOS's native panel), and offers a <code>*.pmagint</code> filter alongside "All files" so these files are easy to find.</div>
       </div>
       <div class="item">
         <div class="label">VDM and VADM...</div>
@@ -880,7 +880,7 @@
       </div>
       <div class="item">
         <div class="label">Relocate D I F...</div>
-        <div class="desc">Batch file relocation of paired direction+paleointensity data (site, age, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing.</div>
+        <div class="desc">Batch file relocation of paired direction+paleointensity data (site, age, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing. Opening this menu shows the expected column layout in the console first, and the file dialog offers a text-file filter. Columns are matched by header name when present (common aliases accepted, e.g. <code>declination</code> for <code>dec</code>) — including an unusual label split by an embedded space inside parentheses, such as <code>F(in microT)</code>, which would otherwise misalign every later column by one position and silently drop every row (confirmed against <code>reference/Stereo_V19/test_Relocate.txt</code>, a real historical test file using exactly this header style). Falls back to a fixed column order only when no header is present at all.</div>
       </div>
 
       <h3 class="group" id="pu-igrf">IGRF</h3>

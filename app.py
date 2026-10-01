@@ -41,7 +41,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from stereo_selection import (
     read_di_file, read_fold_file, read_di_tc_file,
     read_di_a95_file, read_di_a95_tc_file,
-    read_great_circle_file, read_text_lines, split_header,
+    read_great_circle_file, read_text_lines, split_header, detect_header,
     write_di_file, write_di_a95_file, write_great_circle_file,
 )
 from stereo_net import build_stereo_figure, build_stereo_svg
@@ -2410,12 +2410,34 @@ class StereoUtilsApp:
     # -- Paleointensity --------------------------------------------------------
 
     def pu_meanpal(self):
+        """Menu Paleointensity > mean paleointensity... - demande explicite
+        utilisateur ("in mean paleointensity we should be able to read and
+        select data from the .paleoint file... can you provide some help
+        while opening this menu and enable the .paleoint") : le dialogue
+        d'ouverture natif macOS n'affiche pas forcement le `title=` donne a
+        `askopenfilename` (limitation Tkinter/macOS connue), donc le seul
+        "title" precedent etait souvent invisible a l'ouverture - le format
+        attendu est maintenant explique dans la console AVANT le dialogue,
+        qui propose en plus un filtre ".pmagint" explicite (les fichiers
+        .pmagint restaient auparavant noyes parmi "tous les fichiers", sans
+        filtre dedie pour les retrouver rapidement)."""
+        self._afficher(
+            "\n--- mean paleointensity - file format ---\n"
+            "  - a .pmagint file (tab-separated, header row starting with\n"
+            "    \"specimen\" - same format as STARpaleomag_Py/AMS_Py): lists\n"
+            "    every specimen, then lets you pick a range of rows (i j) to\n"
+            "    average, same as the original Fortran.\n"
+            "  - a simple file with 3 columns per line (F Q N, no header):\n"
+            "    the whole file is averaged directly.\n"
+        )
         mode = self._console_input("DATA FROM A FILE (1), KEYBOARD (3) : ", "3")
         if mode is None:
             return
         if mode.strip() == "1":
             path = filedialog.askopenfilename(
-                title="mean paleointensity - file (F Q N, or a .pmagint)")
+                title="mean paleointensity - file (F Q N, or a .pmagint)",
+                filetypes=[("Paleointensity", "*.pmagint"), ("Text files", "*.txt"), ("All files", "*.*")],
+            )
             if not path:
                 return
             kind, data = pu.read_meanpal_file(path)
@@ -2526,8 +2548,24 @@ class StereoUtilsApp:
                 return
 
     def pu_relocatevar(self):
+        """Menu Paleointensity > Relocate D I F... - meme demande utilisateur
+        que pu_meanpal ("same pb for relocate") : help affiche dans la
+        console AVANT le dialogue natif (dont le `title=` n'est souvent pas
+        visible sous macOS), et un filtre de fichiers explicite au lieu de
+        n'offrir que "tous les fichiers". Pas d'extension dediee ici (voir
+        reference/Stereo_V19/test_Relocate.txt - un simple .txt), donc le
+        filtre reste generique (.txt/.dat + tous les fichiers)."""
+        self._afficher(
+            "\n--- Relocate D I F - file format ---\n"
+            "  One site per line: site age age_err lat lon dec inc a95 F F_err\n"
+            "  (space/tab-separated; an optional header row with these column\n"
+            "  names, or common aliases such as \"declination\"/\"d\" for dec,\n"
+            "  lets the columns be in any order).\n"
+        )
         path = filedialog.askopenfilename(
-            title="Relocate D I F - file (site age age_err lat lon dec inc a95 F F_err)")
+            title="Relocate D I F - file (site age age_err lat lon dec inc a95 F F_err)",
+            filetypes=[("Text files", "*.txt"), ("Data files", "*.dat"), ("All files", "*.*")],
+        )
         if not path:
             return
         target = self._prompt_floats("relocation site - lat, lon, ex. \"-15 -72\" : ", 2)
@@ -2537,9 +2575,61 @@ class StereoUtilsApp:
         lines = read_text_lines(path)
         data_lines, idx = split_header(
             lines, "site", "age", "ageerr", "slat", "slon", "dec", "inc", "a95", "pal", "palerr")
-        if all(k in idx for k in ("site", "age", "ageerr", "slat", "slon", "dec", "inc", "a95", "pal", "palerr")):
+        core_keys = ("site", "age", "ageerr", "slat", "slon", "dec", "inc", "a95")
+        if all(k in idx for k in core_keys + ("pal", "palerr")):
             cols = [idx["site"], idx["age"], idx["ageerr"], idx["slat"], idx["slon"],
                     idx["dec"], idx["inc"], idx["a95"], idx["pal"], idx["palerr"]]
+        elif idx and all(k in idx for k in core_keys):
+            # En-tete reconnu pour les 8 colonnes "sures", mais pas F/F_err -
+            # tolerance supplementaire pour un intitule de colonne qui
+            # n'est pas un alias exact (ex. "F(in microT)"/"F_Error", voir
+            # le vrai fichier de reference reference/Stereo_V19/
+            # test_Relocate.txt) : sans ceci, ce fichier reel tombait dans
+            # le repli "legacy" ci-dessous, qui suppose A TORT une colonne
+            # "litho" absente ici (11 colonnes attendues contre 10
+            # reellement presentes) - TOUTES ses lignes etaient alors
+            # silencieusement ecartees (`len(parts) <= max(cols)`), sans le
+            # moindre message d'erreur - demande explicite utilisateur
+            # ("same pb for relocate", apres "mean paleointensity").
+            # "F(in microT)" se scinde en 2 tokens d'en-tete ("f(in",
+            # "microt)") a cause de l'espace interne aux parentheses, alors
+            # que la ligne de DONNEES correspondante n'a qu'UNE seule
+            # valeur pour cette colonne - sans fusion, l'index de la
+            # colonne suivante (F_Error) se retrouve decale de 1 par
+            # rapport aux donnees reelles. Fusionne tout groupe de tokens
+            # ayant une parenthese ouvrante sans fermante avec les
+            # suivants jusqu'a la fermante, pour que chaque entree de
+            # `header_tokens` corresponde exactement a UNE colonne de
+            # donnees.
+            raw_tokens = detect_header(lines[0])
+            header_tokens, buf = [], None
+            for t in raw_tokens:
+                if buf is not None:
+                    buf += " " + t
+                    if ")" in t:
+                        header_tokens.append(buf)
+                        buf = None
+                    continue
+                if "(" in t and ")" not in t:
+                    buf = t
+                else:
+                    header_tokens.append(t)
+            if buf is not None:
+                header_tokens.append(buf)
+            i_pal = next(
+                (i for i, t in enumerate(header_tokens)
+                 if t in ("pal", "f", "intensity") or t.startswith("f(")), None)
+            i_palerr = next(
+                (i for i, t in enumerate(header_tokens)
+                 if t in ("palerr", "pal_err", "f_err", "ferr", "f_error", "ferror")), None)
+            if i_pal is None or i_palerr is None:
+                self._afficher(
+                    "Header recognized (site/age/lat/lon/dec/inc/a95) but the "
+                    "F/F_err (intensity) columns could not be identified - "
+                    "aborting rather than guessing their position.\n")
+                return
+            cols = [idx["site"], idx["age"], idx["ageerr"], idx["slat"], idx["slon"],
+                    idx["dec"], idx["inc"], idx["a95"], i_pal, i_palerr]
         else:
             cols = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # legacy: site,litho(skipped),age,age_err,slat,slon,dec,inc,a95,pal,pal_err
             data_lines = lines
