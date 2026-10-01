@@ -638,6 +638,25 @@ def read_field_curve_data(
     return out
 
 
+def _dec_error_from_a95(a95: Optional[float], inc: Optional[float]) -> float:
+    """Erreur de declinaison a partir du cone de confiance a95 (Fisher) -
+    demande explicite utilisateur ("how is calculated the error on
+    declination... for the data with dec, inc and a95") : a95 est un rayon
+    angulaire en 3D, pas une erreur par axe ; sa projection sur l'axe
+    inclinaison vaut ~a95 (deja utilise tel quel pour le 2e sous-
+    graphique), mais sa projection sur l'axe declinaison vaut
+    a95/cos(inc) - les meridiens convergent vers le pole, donc le MEME
+    cone angulaire couvre une plage de declinaison d'autant plus large
+    que l'inclinaison est forte (cf. Butler, Paleomagnetism). cos(inc)
+    est borne a 0.05 (~87 deg) pour eviter une division par (quasi) zero
+    a l'approche du cas limite vertical - au-dela, la declinaison n'est
+    de toute facon plus vraiment contrainte par la mesure."""
+    if a95 is None or inc is None:
+        return 0.0
+    cos_i = max(abs(np.cos(np.radians(inc))), 0.05)
+    return a95 / cos_i
+
+
 def plot_field_curve(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     title: str = "",
@@ -719,8 +738,8 @@ def plot_field_curve(
         for p in data_points:
             if p[1] is not None:
                 d = p[1] - 360.0 if p[1] > 180.0 else p[1]
-                a95 = p[3] if p[3] is not None else 0.0
-                dec_vals += [d - a95, d + a95]
+                d_err = _dec_error_from_a95(p[3], p[2])
+                dec_vals += [d - d_err, d + d_err]
     dec_lo, dec_hi = min(dec_vals), max(dec_vals)
     pad = max(5.0, 0.1 * (dec_hi - dec_lo))
     dec_lo, dec_hi = dec_lo - pad, dec_hi + pad
@@ -736,7 +755,8 @@ def plot_field_curve(
             d_dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in dir_rows]
             d_inc = [p[2] for p in dir_rows]
             d_a95 = [p[3] for p in dir_rows]
-            axes[0].errorbar(d_ages, d_dec, yerr=d_a95, fmt="ko", ms=4, capsize=3, label="data")
+            d_dec_err = [_dec_error_from_a95(p[3], p[2]) for p in dir_rows]
+            axes[0].errorbar(d_ages, d_dec, yerr=d_dec_err, fmt="ko", ms=4, capsize=3, label="data")
             axes[1].errorbar(d_ages, d_inc, yerr=d_a95, fmt="ko", ms=4, capsize=3)
             axes[0].legend(loc="best", fontsize=8)
         f_ages = [p[0] for p in data_points if p[4] is not None]
