@@ -661,7 +661,7 @@
             <li>a continuous trace (a confidence ellipse's 120 segments, for instance) is written as a single <code>&lt;polyline&gt;</code> — one selectable object — instead of matplotlib's one separate path per segment;</li>
             <li>for <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is additionally wrapped in its own <code>&lt;g id="layer name"&gt;</code>, exactly like the original Fortran's <code>newlayer</code>.</li>
           </ul>
-          Every other plot (K-T, Hysteresis, VGP maps, PmagPy-tools…) still exports via matplotlib's own <code>savefig</code>, unchanged.
+          Most other plots (K-T, Hysteresis, VGP maps, most of PmagPy-tools…) are shown in the canvas as a reloaded PNG (<code>imshow</code>, since those PmagPy functions draw with their own standalone <code>pyplot</code> calls rather than onto this app's shared <code>Figure</code>) — exporting one of those still writes an SVG file, but its only content is that same bitmap re-encapsulated, not real vector paths. <strong>Predicted field curve...</strong> is an exception despite going through the same PNG/<code>imshow</code> preview — a user report ("the graphic export is not a full svg but an encapsulated poor resolution png file") prompted a dedicated path (<code>stereo_pmagpy.save_field_curve_svg</code>) that rebuilds the exact same plot directly as vector lines/error bars/fill — a real, scalable SVG rather than an embedded raster.
         </div>
       </div>
     </section>

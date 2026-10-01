@@ -201,6 +201,16 @@ class StereoUtilsApp:
         # trace remet les DEUX a None via _redraw_canvas/_show_images
         # avant de repositionner le sien).
         self._stereo_svg_state = None
+        # Meme principe pour "Predicted field curve..." (voir
+        # pmagpy_field_curve) - demande explicite utilisateur ("the
+        # graphic export is not a full svg but an encapsulated poor
+        # resolution png file") : ce trace passe par _show_images (image
+        # PNG rechargee via imshow dans self.fig, pas de vecteur), donc le
+        # fallback generique self.fig.savefig(format="svg") n'y encapsule
+        # que ce bitmap. export_svg utilise stereo_pmagpy.
+        # save_field_curve_svg (vrai SVG vectoriel, memes donnees
+        # rejouees) quand ceci n'est pas None.
+        self._field_curve_svg_state = None
 
         self._setup_menu()
         self._setup_shortcuts()
@@ -346,6 +356,7 @@ class StereoUtilsApp:
         # cette methode.
         self._project_svg_state = None
         self._stereo_svg_state = None  # meme principe, voir plot_screen
+        self._field_curve_svg_state = None  # meme principe, voir pmagpy_field_curve
         self.root.update_idletasks()
         w = self.root.winfo_width()
         h = self.root.winfo_height()
@@ -369,6 +380,7 @@ class StereoUtilsApp:
         plusieurs, meme motif que xygraph.py cote Starmac."""
         self._project_svg_state = None  # voir _redraw_canvas
         self._stereo_svg_state = None
+        self._field_curve_svg_state = None  # pmagpy_field_curve le repositionne ensuite
         if not files:
             self._afficher("(no plot produced)\n")
             return
@@ -542,6 +554,9 @@ class StereoUtilsApp:
                     path_between_points=path_between, point_size=psize,
                     means=means, great_circles=gcircles,
                 ).save(path)
+            elif self._field_curve_svg_state is not None:
+                fc_points, fc_title, fc_data_points = self._field_curve_svg_state
+                sp.save_field_curve_svg(fc_points, path, title=fc_title, data_points=fc_data_points)
             else:
                 self.fig.savefig(path, format="svg")
         except Exception:
@@ -2785,9 +2800,15 @@ class StereoUtilsApp:
                     messagebox.showwarning("No data", "No usable row found in this file.")
                     data_points = None
 
-        path = sp.plot_field_curve(
-            points, title=f"{model_label} @ lat={lat:.2f}, lon={lon:.2f}", data_points=data_points)
+        curve_title = f"{model_label} @ lat={lat:.2f}, lon={lon:.2f}"
+        path = sp.plot_field_curve(points, title=curve_title, data_points=data_points)
         self._show_images([path])
+        # Copie (pas une reference) - voir __init__/_project_svg_state et
+        # export_svg. Repositionne APRES _show_images (qui remet cet etat
+        # a None pour tout autre trace - voir son commentaire).
+        self._field_curve_svg_state = (
+            list(points), curve_title, list(data_points) if data_points else None,
+        )
         self._afficher(f"{len(points)} point(s) computed with {model_label}.\n")
         if data_points:
             self._afficher(f"{len(data_points)} data point(s) overlaid from {os.path.basename(data_path)}.\n")

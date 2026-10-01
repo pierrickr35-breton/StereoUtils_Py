@@ -657,15 +657,28 @@ def _dec_error_from_a95(a95: Optional[float], inc: Optional[float]) -> float:
     return a95 / cos_i
 
 
-def plot_field_curve(
+def _build_field_curve_figure(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     title: str = "",
     data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
 ):
-    """3 sous-graphiques empiles (Dec/Inc/Intensity vs date), meme
-    convention de sauvegarde (PNG dans un dossier temporaire, chemin
-    retourne pour `app._show_images`) que les autres fonctions de trace de
-    ce module.
+    """Construit la Figure matplotlib (vectorielle - lignes/errorbar/
+    fill_between, pas une image) du trace Predicted field curve.
+    Factorisee entre `plot_field_curve` (sauvegarde en PNG pour l'apercu
+    raster du canvas integre - voir app._show_images, qui ne sait
+    afficher qu'une image bitmap via `imshow`) et `save_field_curve_svg`
+    (export VECTORIEL direct) - demande explicite utilisateur ("the
+    graphic export is not a full svg but an encapsulated poor resolution
+    png file") : `app.export_svg`'s generic fallback (`self.fig.
+    savefig(path, format="svg")`) ne fait que re-ecrire en SVG le canvas
+    DEJA affiche, qui pour ce trace est l'image PNG rechargee via
+    `imshow` - un SVG valide, mais dont le seul contenu est ce bitmap
+    encapsule, pas de vrai vecteur. `app.pmagpy_field_curve` stocke donc
+    desormais aussi les parametres de ce trace (voir
+    `app._field_curve_svg_state`, meme principe que `_project_svg_state`/
+    `_stereo_svg_state`) pour que `export_svg` puisse rejouer CETTE
+    fonction directement vers un SVG, au lieu de repartir du PNG deja
+    rasterise.
 
     `points[i]` = (date, dec, inc, f_uT, ddec, dinc, df_uT) - les 3
     derniers (voir stereo_pmagpy.predicted_field_curve/
@@ -769,11 +782,38 @@ def plot_field_curve(
     for ax in axes:
         ax.grid(True, linewidth=0.3)
     fig.tight_layout()
+    return fig
+
+
+def plot_field_curve(
+    points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
+    title: str = "",
+    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
+) -> str:
+    """Apercu raster (PNG dans un dossier temporaire, chemin retourne pour
+    `app._show_images`) du trace construit par `_build_field_curve_figure`
+    - voir sa docstring pour le format de `points`/`data_points` et pour
+    `save_field_curve_svg` (export vectoriel equivalent)."""
+    fig = _build_field_curve_figure(points, title, data_points)
     save_folder = tempfile.mkdtemp(prefix="stereoutils_")
     path = os.path.join(save_folder, "field_curve.png")
     fig.savefig(path, dpi=120)
     plt.close("all")
     return path
+
+
+def save_field_curve_svg(
+    points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
+    path: str,
+    title: str = "",
+    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
+) -> None:
+    """Export VECTORIEL direct (pas de PNG intermediaire) du meme trace
+    que `plot_field_curve` - voir `_build_field_curve_figure`. Appelee par
+    `app.export_svg` via `app._field_curve_svg_state`."""
+    fig = _build_field_curve_figure(points, title, data_points)
+    fig.savefig(path, format="svg")
+    plt.close("all")
 
 
 def write_field_curve_file(
