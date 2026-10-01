@@ -1060,17 +1060,25 @@ def meanpal_weighted(triples: Sequence[Tuple[float, float, float]]) -> Optional[
 
 
 def relocatevar_simplified(
-    rows: Sequence[Tuple[str, float, float, float, float, float, float, float, float]],
+    rows: Sequence[Tuple[str, float, float, float, float, float, float, float]],
     target_lat: float, target_lon: float,
 ) -> str:
-    """Port simplifie de `relocatevar` (Relocate D I F) : `rows` = (site,
-    age,age_err,slat,slon,dec,inc,a95,pal,pal_err) par site - relocalise
-    direction et VDM/VADM vers (target_lat,target_lon), une seule table
-    de resultats combinee (pas les 6 fichiers .vec/.pie/.site/.plat/.lat
-    au format GMT du source, destines a un pipeline de trace externe -
-    voir docstring du module)."""
-    lines = ["site   age  age_err  dec_r   inc_r   a95    Fvdm    Fvadm"]
-    for site, age, age_err, slat, slon, dec, inc, a95, pal, pal_err in rows:
+    """Port simplifie de `relocatevar` (Relocate D I F) - demande explicite
+    utilisateur ("site lat long Dec Inc a95 F(in microT) F_Error... en
+    sortie results: site, dec, inc,a95, dec_r,inc_r, pal, pal_err,
+    r_lat,vdm,vadm,fvdm, fvadm") : `rows` = (site,slat,slon,dec,inc,a95,
+    pal,pal_err) par site - PAS d'age/age_err (uniquement utilises par le
+    Fortran pour les fichiers .vec/.pie/... au format GMT externe, hors
+    perimetre ici - voir docstring du module). Relocalise direction et
+    VDM/VADM vers (target_lat,target_lon), une table de resultats
+    reprenant tous les champs de la ligne "results:" du Fortran
+    (pmagoutils.f:5906) sauf age/age_err. vdm/vadm affiches en 1e22 Am2
+    (meme convention que le prompt deja existant "VDM to Intensity",
+    "VDM * 1.e22 Am2"). `r_lat` est repete identique a chaque ligne (echo
+    de la cible de relocalisation, meme choix que le Fortran, redondant
+    mais fidele)."""
+    lines = ["site       dec    inc   a95   dec_r   inc_r     pal pal_err   r_lat     vdm    vadm    fvdm    fvadm"]
+    for site, slat, slon, dec, inc, a95, pal, pal_err in rows:
         reloc = not (dec == 0.0 and inc == 0.0 and a95 == 0.0)
         if reloc:
             plat, plon = dodi_vgp(dec, inc, slat, slon)
@@ -1091,9 +1099,10 @@ def relocatevar_simplified(
         if not reloc:
             fvdm = -99.0
         lines.append(
-            f"{site:<8s} {age:6.1f} {age_err:6.1f} "
-            f"{(dec_r if reloc else float('nan')):7.1f} {(inc_r if reloc else float('nan')):7.1f} {a95:6.1f} "
-            f"{fvdm:8.1f} {fvadm:8.1f}"
+            f"{site:<8s} {dec:6.1f} {inc:6.1f} {a95:5.1f} "
+            f"{(dec_r if reloc else float('nan')):7.1f} {(inc_r if reloc else float('nan')):7.1f} "
+            f"{pal:7.1f} {pal_err:7.1f} {target_lat:7.1f} "
+            f"{vdm * 1e-22:7.3f} {vadm * 1e-22:7.3f} {fvdm:7.1f} {fvadm:7.1f}"
         )
     return "\n".join(lines) + "\n"
 

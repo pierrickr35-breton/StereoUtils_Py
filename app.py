@@ -2548,47 +2548,96 @@ class StereoUtilsApp:
                 return
 
     def pu_relocatevar(self):
-        """Menu Paleointensity > Relocate D I F... - meme demande utilisateur
-        que pu_meanpal ("same pb for relocate") : help affiche dans la
-        console AVANT le dialogue natif (dont le `title=` n'est souvent pas
-        visible sous macOS), et un filtre de fichiers explicite au lieu de
-        n'offrir que "tous les fichiers". Pas d'extension dediee ici (voir
-        reference/Stereo_V19/test_Relocate.txt - un simple .txt), donc le
-        filtre reste generique (.txt/.dat + tous les fichiers)."""
+        """Menu Paleointensity > Relocate D I F... - demande explicite
+        utilisateur ("est ce possible de faire les calculs avec en entree
+        un fichier ou une entree manuelle site lat long Dec Inc a95
+        F(in microT) F_Error ... en sortie results: site, dec, inc,a95,
+        dec_r,inc_r, pal, pal_err, r_lat,vdm,vadm,fvdm, fvadm") : meme
+        choix FILE (1)/KEYBOARD (3) que mean paleointensity, et la table
+        de resultats reprend desormais tous les champs demandes (voir
+        stereo_pmagutils.relocatevar_simplified) plutot que le sous-
+        ensemble precedent. Help affiche dans la console AVANT tout
+        dialogue/saisie (le `title=` du dialogue natif n'est souvent pas
+        visible sous macOS)."""
         self._afficher(
             "\n--- Relocate D I F - file format ---\n"
-            "  One site per line: site age age_err lat lon dec inc a95 F F_err\n"
+            "  One site per line: site lat lon dec inc a95 F F_err\n"
             "  (space/tab-separated; an optional header row with these column\n"
             "  names, or common aliases such as \"declination\"/\"d\" for dec,\n"
             "  lets the columns be in any order).\n"
         )
-        path = filedialog.askopenfilename(
-            title="Relocate D I F - file (site age age_err lat lon dec inc a95 F F_err)",
-            filetypes=[("Text files", "*.txt"), ("Data files", "*.dat"), ("All files", "*.*")],
-        )
-        if not path:
+        mode = self._console_input("DATA FROM A FILE (1), KEYBOARD (3) : ", "3")
+        if mode is None:
             return
-        target = self._prompt_floats("relocation site - lat, lon, ex. \"-15 -72\" : ", 2)
+        if mode.strip() == "1":
+            path = filedialog.askopenfilename(
+                title="Relocate D I F - file (site lat lon dec inc a95 F F_err)",
+                filetypes=[("Text files", "*.txt"), ("Data files", "*.dat"), ("All files", "*.*")],
+            )
+            if not path:
+                return
+            rows = self._read_relocatevar_file(path)
+            if rows is None:
+                return
+        else:
+            self._afficher(
+                "site lat lon dec inc a95 F F_err\n(blank line to stop, paste multiple lines OK)\n")
+            rows = []
+            i = 1
+            while True:
+                line = self._console_input(f"{i:3d}: ")
+                if line is None or not line.strip():
+                    break
+                for subline in self._split_pasted_rows(line):
+                    parts = subline.split()
+                    if len(parts) < 8:
+                        self._afficher(f"  (invalid, skipped: \"{subline}\")\n")
+                        continue
+                    try:
+                        site = parts[0]
+                        slat, slon, dec, inc, a95, pal, pal_err = (float(p) for p in parts[1:8])
+                    except ValueError:
+                        self._afficher(f"  (invalid, skipped: \"{subline}\")\n")
+                        continue
+                    rows.append((site, slat, slon, dec, inc, a95, pal, pal_err))
+                    i += 1
+            if not rows:
+                return
+            rows_text = "".join(
+                f"{site} {slat:.4f} {slon:.4f} {dec:.2f} {inc:.2f} {a95:.2f} {pal:.2f} {pal_err:.2f}\n"
+                for site, slat, slon, dec, inc, a95, pal, pal_err in rows
+            )
+            self._save_manual_entry_backup(
+                "relocatevar", "#site lat lon dec inc a95 F F_err", rows_text)
+
+        target = self._prompt_floats("relocation site : enter lat lon : ", 2)
         if target is None:
             return
         target_lat, target_lon = target
+        self._afficher(pu.relocatevar_simplified(rows, target_lat, target_lon))
+
+    def _read_relocatevar_file(self, path):
+        """Lit un fichier pour Relocate D I F - voir pu_relocatevar.
+        Colonnes attendues : site lat lon dec inc a95 F F_err (en-tete
+        optionnel, aliases courants acceptes). Retourne None (et affiche
+        un message) si rien d'exploitable n'a ete trouve, plutot que de
+        laisser pu_relocatevar continuer avec une liste vide silencieuse."""
         lines = read_text_lines(path)
         data_lines, idx = split_header(
-            lines, "site", "age", "ageerr", "slat", "slon", "dec", "inc", "a95", "pal", "palerr")
-        core_keys = ("site", "age", "ageerr", "slat", "slon", "dec", "inc", "a95")
+            lines, "site", "slat", "slon", "dec", "inc", "a95", "pal", "palerr")
+        core_keys = ("site", "slat", "slon", "dec", "inc", "a95")
         if all(k in idx for k in core_keys + ("pal", "palerr")):
-            cols = [idx["site"], idx["age"], idx["ageerr"], idx["slat"], idx["slon"],
-                    idx["dec"], idx["inc"], idx["a95"], idx["pal"], idx["palerr"]]
+            cols = [idx["site"], idx["slat"], idx["slon"], idx["dec"], idx["inc"], idx["a95"],
+                    idx["pal"], idx["palerr"]]
         elif idx and all(k in idx for k in core_keys):
-            # En-tete reconnu pour les 8 colonnes "sures", mais pas F/F_err -
-            # tolerance supplementaire pour un intitule de colonne qui
-            # n'est pas un alias exact (ex. "F(in microT)"/"F_Error", voir
-            # le vrai fichier de reference reference/Stereo_V19/
-            # test_Relocate.txt) : sans ceci, ce fichier reel tombait dans
-            # le repli "legacy" ci-dessous, qui suppose A TORT une colonne
-            # "litho" absente ici (11 colonnes attendues contre 10
-            # reellement presentes) - TOUTES ses lignes etaient alors
-            # silencieusement ecartees (`len(parts) <= max(cols)`), sans le
+            # En-tete reconnu pour site/lat/lon/dec/inc/a95, mais pas
+            # F/F_err - tolerance supplementaire pour un intitule de
+            # colonne qui n'est pas un alias exact (ex. "F(in microT)"/
+            # "F_Error", voir le vrai fichier de reference
+            # reference/Stereo_V19/test_Relocate.txt) : sans ceci, ce
+            # fichier reel tombait dans le repli "legacy" ci-dessous, qui
+            # suppose A TORT une colonne "litho"/age absente ici - TOUTES
+            # ses lignes etaient alors silencieusement ecartees, sans le
             # moindre message d'erreur - demande explicite utilisateur
             # ("same pb for relocate", apres "mean paleointensity").
             # "F(in microT)" se scinde en 2 tokens d'en-tete ("f(in",
@@ -2624,14 +2673,17 @@ class StereoUtilsApp:
                  if t in ("palerr", "pal_err", "f_err", "ferr", "f_error", "ferror")), None)
             if i_pal is None or i_palerr is None:
                 self._afficher(
-                    "Header recognized (site/age/lat/lon/dec/inc/a95) but the "
+                    "Header recognized (site/lat/lon/dec/inc/a95) but the "
                     "F/F_err (intensity) columns could not be identified - "
                     "aborting rather than guessing their position.\n")
-                return
-            cols = [idx["site"], idx["age"], idx["ageerr"], idx["slat"], idx["slon"],
-                    idx["dec"], idx["inc"], idx["a95"], i_pal, i_palerr]
+                return None
+            cols = [idx["site"], idx["slat"], idx["slon"], idx["dec"], idx["inc"], idx["a95"],
+                    i_pal, i_palerr]
         else:
-            cols = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10]  # legacy: site,litho(skipped),age,age_err,slat,slon,dec,inc,a95,pal,pal_err
+            # legacy Fortran (pmagoutils.f:5831 - pas d'en-tete) :
+            # site,litho,age,age_err,slat,slong,dec,dip,a95,pal,pal_err -
+            # litho/age/age_err ignores ici (pas dans le format demande).
+            cols = [0, 4, 5, 6, 7, 8, 9, 10]
             data_lines = lines
         rows = []
         for line in data_lines:
@@ -2643,11 +2695,14 @@ class StereoUtilsApp:
                 continue
             try:
                 site = parts[cols[0]]
-                age, age_err, slat, slon, dec, inc, a95, pal, pal_err = (float(parts[c]) for c in cols[1:10])
+                slat, slon, dec, inc, a95, pal, pal_err = (float(parts[c]) for c in cols[1:8])
             except ValueError:
                 continue
-            rows.append((site, age, age_err, slat, slon, dec, inc, a95, pal, pal_err))
-        self._afficher(pu.relocatevar_simplified(rows, target_lat, target_lon))
+            rows.append((site, slat, slon, dec, inc, a95, pal, pal_err))
+        if not rows:
+            self._afficher("no exploitable data in file\n")
+            return None
+        return rows
 
     # -- IGRF --------------------------------------------------------------
 
