@@ -2773,7 +2773,8 @@ class StereoUtilsApp:
             "Overlay real dated data (age, dec, inc, a95, [intensity, dintensity]) on this curve?",
         ):
             data_path = filedialog.askopenfilename(
-                title="Data file to compare (age dec inc a95 [intensity dintensity])")
+                title="Data file to compare (age dec inc a95 [intensity dintensity]"
+                " - tab-separated files with extra columns and missing cells are also accepted)")
             if data_path:
                 try:
                     data_points = sp.read_field_curve_data(data_path)

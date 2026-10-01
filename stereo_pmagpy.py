@@ -540,46 +540,100 @@ def predicted_field_curve(
     return points, warnings
 
 
-def read_field_curve_data(path: str) -> List[Tuple[float, float, float, float, Optional[float], Optional[float]]]:
-    """Points reels (age, dec, inc, a95, intensity_uT_ou_None,
-    dintensity_ou_None) a superposer a une courbe predite - demande
-    explicite utilisateur ("est-ce possible de plotter des donnees en
-    comparaison des modeles de champ, menu Predicted field curve").
-    Colonnes reperees par en-tete si present (age/dec/inc/a95, +
-    intensity/dintensity optionnelles), sinon position 0-3(-5) - meme
-    convention que le reste de ce projet (voir stereo_selection.
-    split_header). Une ligne sans intensity/dintensity lisible laisse
-    simplement ces deux valeurs a None (superposee aux 2 premiers
-    sous-graphiques seulement, pas au 3e)."""
+_FIELD_CURVE_DATA_ALIASES = {
+    "dec": {"dec", "declination", "d"},
+    "inc": {"inc", "inclination", "i"},
+    "a95": {"a95", "alpha95", "alph"},
+    "intensity": {"f", "intensity", "pal"},
+    "dintensity": {"df", "dintensity", "f_err", "ferr", "palerr", "pal_err", "dpal"},
+}
+
+
+def read_field_curve_data(
+    path: str,
+) -> List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]:
+    """Points reels (age, dec_ou_None, inc_ou_None, a95_ou_None,
+    intensity_uT_ou_None, dintensity_ou_None) a superposer a une courbe
+    predite - demande explicite utilisateur ("est-ce possible de plotter
+    des donnees en comparaison des modeles de champ, menu Predicted field
+    curve").
+
+    Deux formats de fichier sont acceptes :
+      - l'ancien format "simple", separe par espaces : age dec inc a95
+        [intensity dintensity] (en-tete optionnel, sinon position 0-5).
+      - un format de terrain reel plus riche, tabule (demande explicite
+        utilisateur avec un fichier d'exemple -
+        Field_Models/Chili_data.txt) : colonnes additionnelles (site,
+        agemax, agemin...) ignorees, en-tete "age (AD)"/"F"/"dF" reconnus
+        comme alias de age/intensity/dintensity, cellules vides
+        preservees (une ligne separee par des tabulations garde ses
+        colonnes manquantes a leur place, contrairement a un simple
+        `.split()` qui les ecraserait et decalerait tout ce qui suit) -
+        un site peut alors n'avoir QUE l'intensite (dec/inc/a95 vides,
+        ex. "Casuchas" dans ce fichier) ou QUE la direction (F/dF vides),
+        chaque cas se traduisant par un None a la position correspondante
+        plutot que d'ecarter completement la ligne.
+    Le delimiteur (tabulation vs espaces) est detecte sur la premiere
+    ligne du fichier."""
     lines = read_text_lines(path)
-    data_lines, idx = split_header(lines, "age", "dec", "inc", "a95", "intensity", "dintensity")
-    if all(k in idx for k in ("age", "dec", "inc", "a95")):
-        i_age, i_dec, i_inc, i_a95 = idx["age"], idx["dec"], idx["inc"], idx["a95"]
+    if not lines:
+        return []
+    tab_delim = "\t" in lines[0]
+
+    def split_row(line: str) -> List[str]:
+        line = line.rstrip("\n").rstrip("\r")
+        if tab_delim:
+            return [c.strip() for c in line.split("\t")]
+        return line.split()
+
+    first = lines[0].strip()
+    idx: dict = {}
+    data_lines = lines
+    if first.startswith("#"):
+        header_tokens = [t.lower() for t in split_row(first[1:])]
+        for i, tok in enumerate(header_tokens):
+            if tok == "age" or tok.startswith("age ") or tok.startswith("age("):
+                idx.setdefault("age", i)
+                continue
+            for key, aliases in _FIELD_CURVE_DATA_ALIASES.items():
+                if tok in aliases:
+                    idx.setdefault(key, i)
+                    break
+        data_lines = lines[1:]
+
+    if "age" in idx:
+        i_age = idx["age"]
+        i_dec, i_inc, i_a95 = idx.get("dec"), idx.get("inc"), idx.get("a95")
         i_f, i_df = idx.get("intensity"), idx.get("dintensity")
     else:
         i_age, i_dec, i_inc, i_a95, i_f, i_df = 0, 1, 2, 3, 4, 5
 
+    def cell(parts: List[str], i: Optional[int]) -> Optional[float]:
+        if i is None or i >= len(parts) or not parts[i]:
+            return None
+        try:
+            return float(parts[i])
+        except ValueError:
+            return None
+
     out = []
     for line in data_lines:
-        line = line.strip()
-        if not line or line.startswith("!") or line.startswith("#"):
+        if not line.strip() or line.strip().startswith("!") or line.strip().startswith("#"):
             continue
-        parts = line.split()
-        if len(parts) <= max(i_age, i_dec, i_inc, i_a95):
+        parts = split_row(line)
+        if i_age >= len(parts):
             continue
-        try:
-            age = float(parts[i_age])
-            dec, inc, a95 = float(parts[i_dec]), float(parts[i_inc]), float(parts[i_a95])
-        except ValueError:
+        age = cell(parts, i_age)
+        if age is None:
             continue
-        f_ut = dfut = None
-        if i_f is not None and len(parts) > i_f:
-            try:
-                f_ut = float(parts[i_f])
-                if i_df is not None and len(parts) > i_df:
-                    dfut = float(parts[i_df])
-            except ValueError:
-                f_ut = dfut = None
+        dec, inc, a95 = cell(parts, i_dec), cell(parts, i_inc), cell(parts, i_a95)
+        if None in (dec, inc, a95):
+            dec = inc = a95 = None
+        f_ut, dfut = cell(parts, i_f), cell(parts, i_df)
+        if f_ut is None:
+            dfut = None
+        if dec is None and f_ut is None:
+            continue
         out.append((age, dec, inc, a95, f_ut, dfut))
     return out
 
@@ -587,7 +641,7 @@ def read_field_curve_data(path: str) -> List[Tuple[float, float, float, float, O
 def plot_field_curve(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     title: str = "",
-    data_points: Optional[List[Tuple[float, float, float, float, Optional[float], Optional[float]]]] = None,
+    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
 ):
     """3 sous-graphiques empiles (Dec/Inc/Intensity vs date), meme
     convention de sauvegarde (PNG dans un dossier temporaire, chemin
@@ -604,13 +658,16 @@ def plot_field_curve(
     des incertitudes... est-ce possible d'integrer une partie").
 
     `data_points` (optionnel - voir read_field_curve_data) : donnees REELLES
-    datees (age, dec, inc, a95, intensity_ou_None, dintensity_ou_None),
-    superposees a la courbe predite en barres d'erreur - demande explicite
-    utilisateur ("plotter des donnees en comparaison des modeles de
-    champ"). L'intensite (3e sous-graphique) n'est marquee que pour les
-    points qui en portent une - un site purement directionnel reste donc
-    superpose sur Dec/Inc seulement, sans laisser croire a une intensite
-    nulle sur le 3e sous-graphique."""
+    datees (age, dec_ou_None, inc_ou_None, a95_ou_None, intensity_ou_None,
+    dintensity_ou_None), superposees a la courbe predite en barres
+    d'erreur - demande explicite utilisateur ("plotter des donnees en
+    comparaison des modeles de champ"). Direction (1er/2e sous-graphique)
+    et intensite (3e) sont marquees independamment : un site purement
+    directionnel (pas d'intensite, ex. donnees de terrain reelles avec F
+    manquant) ou purement d'intensite (pas de direction) n'est superpose
+    que sur les sous-graphiques pour lesquels il porte vraiment une
+    valeur, sans laisser croire a une direction ou une intensite nulle
+    ailleurs."""
     plt.close("all")
     dates = [p[0] for p in points]
     # Declinaison ramenee a [-180, 180] (300 -> -60) plutot que le [0,360)
@@ -647,18 +704,20 @@ def plot_field_curve(
         axes[1].fill_between(dates, inc_a - dinc, inc_a + dinc, color="r", alpha=0.15, linewidth=0)
         axes[2].fill_between(dates, f_a - df_ut, f_a + df_ut, color="g", alpha=0.15, linewidth=0)
     if data_points:
-        d_ages = [p[0] for p in data_points]
-        d_dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in data_points]
-        d_inc = [p[2] for p in data_points]
-        d_a95 = [p[3] for p in data_points]
-        axes[0].errorbar(d_ages, d_dec, yerr=d_a95, fmt="ko", ms=4, capsize=3, label="data")
-        axes[1].errorbar(d_ages, d_inc, yerr=d_a95, fmt="ko", ms=4, capsize=3)
+        dir_rows = [p for p in data_points if p[1] is not None]
+        if dir_rows:
+            d_ages = [p[0] for p in dir_rows]
+            d_dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in dir_rows]
+            d_inc = [p[2] for p in dir_rows]
+            d_a95 = [p[3] for p in dir_rows]
+            axes[0].errorbar(d_ages, d_dec, yerr=d_a95, fmt="ko", ms=4, capsize=3, label="data")
+            axes[1].errorbar(d_ages, d_inc, yerr=d_a95, fmt="ko", ms=4, capsize=3)
+            axes[0].legend(loc="best", fontsize=8)
         f_ages = [p[0] for p in data_points if p[4] is not None]
         f_vals = [p[4] for p in data_points if p[4] is not None]
         f_errs = [p[5] if p[5] is not None else 0.0 for p in data_points if p[4] is not None]
         if f_vals:
             axes[2].errorbar(f_ages, f_vals, yerr=f_errs, fmt="ko", ms=4, capsize=3)
-        axes[0].legend(loc="best", fontsize=8)
     if title:
         axes[0].set_title(title)
     for ax in axes:
