@@ -546,35 +546,44 @@ _FIELD_CURVE_DATA_ALIASES = {
     "a95": {"a95", "alpha95", "alph"},
     "intensity": {"f", "intensity", "pal"},
     "dintensity": {"df", "dintensity", "f_err", "ferr", "palerr", "pal_err", "dpal"},
+    "agemax": {"agemax", "age_max"},
+    "agemin": {"agemin", "age_min"},
 }
 
 
 def read_field_curve_data(
     path: str,
-) -> List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]:
+) -> List[Tuple[
+    float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float],
+    Optional[float], Optional[float],
+]]:
     """Points reels (age, dec_ou_None, inc_ou_None, a95_ou_None,
-    intensity_uT_ou_None, dintensity_ou_None) a superposer a une courbe
-    predite - demande explicite utilisateur ("est-ce possible de plotter
-    des donnees en comparaison des modeles de champ, menu Predicted field
-    curve").
+    intensity_uT_ou_None, dintensity_ou_None, agemax_ou_None,
+    agemin_ou_None) a superposer a une courbe predite - demande explicite
+    utilisateur ("est-ce possible de plotter des donnees en comparaison
+    des modeles de champ, menu Predicted field curve").
 
     Deux formats de fichier sont acceptes :
       - l'ancien format "simple", separe par espaces : age dec inc a95
-        [intensity dintensity] (en-tete optionnel, sinon position 0-5).
+        [intensity dintensity] (en-tete optionnel, sinon position 0-5 -
+        pas d'agemax/agemin dans ce format positionnel historique).
       - un format de terrain reel plus riche, tabule (demande explicite
         utilisateur avec un fichier d'exemple -
-        Field_Models/Chili_data.txt) : colonnes additionnelles (site,
-        agemax, agemin...) ignorees, en-tete "age (AD)"/"F"/"dF" reconnus
-        comme alias de age/intensity/dintensity, cellules vides
-        preservees (une ligne separee par des tabulations garde ses
-        colonnes manquantes a leur place, contrairement a un simple
-        `.split()` qui les ecraserait et decalerait tout ce qui suit) -
-        un site peut alors n'avoir QUE l'intensite (dec/inc/a95 vides,
-        ex. "Casuchas" dans ce fichier) ou QUE la direction (F/dF vides),
-        chaque cas se traduisant par un None a la position correspondante
-        plutot que d'ecarter completement la ligne.
-    Le delimiteur (tabulation vs espaces) est detecte sur la premiere
-    ligne du fichier."""
+        Field_Models/Chili_data.txt) : colonnes additionnelles (site...)
+        ignorees, en-tete "age (AD)"/"F"/"dF" reconnus comme alias de
+        age/intensity/dintensity, cellules vides preservees (une ligne
+        separee par des tabulations garde ses colonnes manquantes a leur
+        place, contrairement a un simple `.split()` qui les ecraserait et
+        decalerait tout ce qui suit) - un site peut alors n'avoir QUE
+        l'intensite (dec/inc/a95 vides, ex. "Casuchas" dans ce fichier)
+        ou QUE la direction (F/dF vides), chaque cas se traduisant par un
+        None a la position correspondante plutot que d'ecarter
+        completement la ligne. `agemax`/`agemin` (bracket de datation,
+        ex. archeologique/14C - demande explicite utilisateur "il manque
+        la barre d'incertitude sur les ages quand disponible") sont lus
+        quand presents dans l'en-tete, SANS supposer lequel des deux est
+        le plus ancien (l'ordre varie d'un fichier a l'autre - voir
+        `_age_xerr`, qui normalise a l'affichage)."""
     lines = read_text_lines(path)
     if not lines:
         return []
@@ -605,8 +614,10 @@ def read_field_curve_data(
         i_age = idx["age"]
         i_dec, i_inc, i_a95 = idx.get("dec"), idx.get("inc"), idx.get("a95")
         i_f, i_df = idx.get("intensity"), idx.get("dintensity")
+        i_agemax, i_agemin = idx.get("agemax"), idx.get("agemin")
     else:
         i_age, i_dec, i_inc, i_a95, i_f, i_df = 0, 1, 2, 3, 4, 5
+        i_agemax, i_agemin = None, None
 
     def cell(parts: List[str], i: Optional[int]) -> Optional[float]:
         if i is None or i >= len(parts) or not parts[i]:
@@ -634,8 +645,33 @@ def read_field_curve_data(
             dfut = None
         if dec is None and f_ut is None:
             continue
-        out.append((age, dec, inc, a95, f_ut, dfut))
+        agemax, agemin = cell(parts, i_agemax), cell(parts, i_agemin)
+        out.append((age, dec, inc, a95, f_ut, dfut, agemax, agemin))
     return out
+
+
+def _age_xerr(age: float, agemax: Optional[float], agemin: Optional[float]) -> Tuple[float, float]:
+    """Barre d'erreur horizontale (age) a partir d'un bracket de datation
+    agemax/agemin - demande explicite utilisateur ("il manque la barre
+    d'incertitude sur les ages quand disponible"). Retourne (erreur vers
+    le bas, erreur vers le haut), toujours >= 0 (0,0) si l'un des deux
+    bornes est absente.
+
+    Aucune hypothese sur quelle colonne (agemax ou agemin) est la plus
+    ancienne/recente - l'ordre varie d'un fichier a l'autre (voir
+    Field_Models/Chili_data.txt : agemax < agemin dans ce fichier,
+    contrairement a ce que le nom pourrait suggerer) - le bracket est
+    normalise via min/max plutot que suppose.
+
+    L'age "retenu" (ex. datation archeomagnetique affinee) peut tomber
+    LEGEREMENT hors de ce bracket (ex. en dehors de la fourchette
+    archeologique/14C d'origine) : le cote deja depasse est alors borne a
+    0 plutot que de produire une longueur de barre negative, invalide
+    pour `errorbar`."""
+    if agemax is None or agemin is None:
+        return (0.0, 0.0)
+    lo, hi = min(agemax, agemin), max(agemax, agemin)
+    return (max(0.0, age - lo), max(0.0, hi - age))
 
 
 def _dec_error_from_a95(a95: Optional[float], inc: Optional[float]) -> float:
@@ -660,7 +696,10 @@ def _dec_error_from_a95(a95: Optional[float], inc: Optional[float]) -> float:
 def _build_field_curve_figure(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     title: str = "",
-    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
+    data_points: Optional[List[Tuple[
+        float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float],
+        Optional[float], Optional[float],
+    ]]] = None,
 ):
     """Construit la Figure matplotlib (vectorielle - lignes/errorbar/
     fill_between, pas une image) du trace Predicted field curve.
@@ -691,15 +730,19 @@ def _build_field_curve_figure(
 
     `data_points` (optionnel - voir read_field_curve_data) : donnees REELLES
     datees (age, dec_ou_None, inc_ou_None, a95_ou_None, intensity_ou_None,
-    dintensity_ou_None), superposees a la courbe predite en barres
-    d'erreur - demande explicite utilisateur ("plotter des donnees en
-    comparaison des modeles de champ"). Direction (1er/2e sous-graphique)
-    et intensite (3e) sont marquees independamment : un site purement
-    directionnel (pas d'intensite, ex. donnees de terrain reelles avec F
-    manquant) ou purement d'intensite (pas de direction) n'est superpose
-    que sur les sous-graphiques pour lesquels il porte vraiment une
-    valeur, sans laisser croire a une direction ou une intensite nulle
-    ailleurs."""
+    dintensity_ou_None, agemax_ou_None, agemin_ou_None), superposees a la
+    courbe predite en barres d'erreur - demande explicite utilisateur
+    ("plotter des donnees en comparaison des modeles de champ"). Direction
+    (1er/2e sous-graphique) et intensite (3e) sont marquees
+    independamment : un site purement directionnel (pas d'intensite, ex.
+    donnees de terrain reelles avec F manquant) ou purement d'intensite
+    (pas de direction) n'est superpose que sur les sous-graphiques pour
+    lesquels il porte vraiment une valeur, sans laisser croire a une
+    direction ou une intensite nulle ailleurs. Quand agemax/agemin sont
+    fournis, une barre d'erreur HORIZONTALE (bracket de datation) est
+    egalement tracee sur les 3 sous-graphiques - demande explicite
+    utilisateur ("il manque la barre d'incertitude sur les ages quand
+    disponible") - voir `_age_xerr`."""
     plt.close("all")
     dates = [p[0] for p in points]
     # Declinaison ramenee a [-180, 180] (300 -> -60) plutot que le [0,360)
@@ -769,14 +812,19 @@ def _build_field_curve_figure(
             d_inc = [p[2] for p in dir_rows]
             d_a95 = [p[3] for p in dir_rows]
             d_dec_err = [_dec_error_from_a95(p[3], p[2]) for p in dir_rows]
-            axes[0].errorbar(d_ages, d_dec, yerr=d_dec_err, fmt="ko", ms=4, capsize=3, label="data")
-            axes[1].errorbar(d_ages, d_inc, yerr=d_a95, fmt="ko", ms=4, capsize=3)
+            d_age_lo, d_age_hi = zip(*(_age_xerr(p[0], p[6], p[7]) for p in dir_rows))
+            axes[0].errorbar(
+                d_ages, d_dec, yerr=d_dec_err, xerr=[d_age_lo, d_age_hi],
+                fmt="ko", ms=4, capsize=3, label="data")
+            axes[1].errorbar(d_ages, d_inc, yerr=d_a95, xerr=[d_age_lo, d_age_hi], fmt="ko", ms=4, capsize=3)
             axes[0].legend(loc="best", fontsize=8)
-        f_ages = [p[0] for p in data_points if p[4] is not None]
-        f_vals = [p[4] for p in data_points if p[4] is not None]
-        f_errs = [p[5] if p[5] is not None else 0.0 for p in data_points if p[4] is not None]
-        if f_vals:
-            axes[2].errorbar(f_ages, f_vals, yerr=f_errs, fmt="ko", ms=4, capsize=3)
+        f_rows = [p for p in data_points if p[4] is not None]
+        if f_rows:
+            f_ages = [p[0] for p in f_rows]
+            f_vals = [p[4] for p in f_rows]
+            f_errs = [p[5] if p[5] is not None else 0.0 for p in f_rows]
+            f_age_lo, f_age_hi = zip(*(_age_xerr(p[0], p[6], p[7]) for p in f_rows))
+            axes[2].errorbar(f_ages, f_vals, yerr=f_errs, xerr=[f_age_lo, f_age_hi], fmt="ko", ms=4, capsize=3)
     if title:
         axes[0].set_title(title)
     for ax in axes:
@@ -788,7 +836,10 @@ def _build_field_curve_figure(
 def plot_field_curve(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     title: str = "",
-    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
+    data_points: Optional[List[Tuple[
+        float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float],
+        Optional[float], Optional[float],
+    ]]] = None,
 ) -> str:
     """Apercu raster (PNG dans un dossier temporaire, chemin retourne pour
     `app._show_images`) du trace construit par `_build_field_curve_figure`
@@ -806,7 +857,10 @@ def save_field_curve_svg(
     points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
     path: str,
     title: str = "",
-    data_points: Optional[List[Tuple[float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float]]]] = None,
+    data_points: Optional[List[Tuple[
+        float, Optional[float], Optional[float], Optional[float], Optional[float], Optional[float],
+        Optional[float], Optional[float],
+    ]]] = None,
 ) -> None:
     """Export VECTORIEL direct (pas de PNG intermediaire) du meme trace
     que `plot_field_curve` - voir `_build_field_curve_figure`. Appelee par
