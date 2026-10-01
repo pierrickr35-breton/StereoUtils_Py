@@ -35,6 +35,7 @@ import tempfile
 from typing import List, Optional, Tuple
 
 from stereo_selection import read_text_lines, split_header
+import field_uncertainty as fu
 
 # cartopy (utilise par ipmag.make_orthographic_map pour "Plot VGPs on Map")
 # telecharge les traits de cote Natural Earth au premier usage - la version
@@ -478,33 +479,61 @@ def _gufm1_dif(lat: float, lon: float, alt_km: float, date: float) -> Tuple[floa
 def predicted_field_curve(
     lat: float, lon: float, alt_km: float, date_start: float, date_end: float,
     step: float, mod: str,
-) -> Tuple[List[Tuple[float, float, float, float]], List[str]]:
+) -> Tuple[List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]], List[str]]:
     """Serie temporelle D/I/F predite au site (lat,lon,alt_km) par le
     modele `mod` (voir `_FIELD_MODEL_SPECS`, "" = IGRF14, "gufm1" = voir
     `_gufm1_dif`, tout le reste = `ipmag.igrf`), du plus vieux au plus
     recent quel que soit l'ordre de `date_start`/`date_end`.
 
     Retourne (points, warnings) - points = liste de (date, dec, inc,
-    f_uT) une entree PAR DATE OU le modele a repondu ; warnings = une
-    entree par date en echec (hors de la plage reellement couverte par ce
-    modele, ou toute autre erreur numerique) plutot que de faire echouer
-    tout le calcul - meme esprit "un point illisible est saute, pas
-    fatal" que ams_asc.parse_asc_file. Intensite convertie de nT (retour
-    natif de `ipmag.igrf`/`pmag.magsyn`) en microTesla, l'unite utilisee
-    partout ailleurs dans ce projet pour la paleointensite."""
+    f_uT, ddec, dinc, df_uT) une entree PAR DATE OU le modele a repondu ;
+    warnings = une entree par date en echec (hors de la plage reellement
+    couverte par ce modele, ou toute autre erreur numerique) plutot que
+    de faire echouer tout le calcul - meme esprit "un point illisible est
+    saute, pas fatal" que ams_asc.parse_asc_file. Intensite convertie de
+    nT (retour natif de `ipmag.igrf`/`pmag.magsyn`) en microTesla,
+    l'unite utilisee partout ailleurs dans ce projet pour la
+    paleointensite.
+
+    ddec/dinc/df_uT (demande explicite utilisateur : "dans le dossier
+    Field_models, il y a des vieilles sources en Fortran pour calculer
+    des incertitudes... est-ce possible de voir si une partie peut etre
+    integree") : None sauf pour `mod` in ('cals3k','cals10k'), les deux
+    SEULS modeles pour lesquels une incertitude par coefficient est
+    disponible localement (voir field_uncertainty.py pour le format, la
+    verification contre le Fortran d'origine recompile, et pourquoi
+    CALS10k.2 n'en beneficie PAS malgre la meme famille de modele).
+    Pour ces deux `mod`, dec/inc/f_uT eux-memes sont AUSSI recalcules via
+    field_uncertainty (meme synthese B-spline que l'incertitude, pas
+    `ipmag.igrf`) plutot que d'accoler une incertitude "neuve" a un point
+    moyen calcule par un chemin different (interpolation lineaire par
+    morceaux de doigrf entre epoques tabulees) - verifie IDENTIQUE a
+    ipmag.igrf aux epoques exactement tabulees, mais potentiellement
+    legerement different ENTRE deux epoques (vraie spline cubique ici,
+    pas une simple droite) ; garder le MEME chemin de calcul pour le
+    point moyen et son enveloppe evite une incoherence visuelle entre
+    les deux sur le graphique."""
     date_start, date_end = min(date_start, date_end), max(date_start, date_end)
     step = abs(step) or 1.0
     kwargs = {} if mod == "" else {"mod": mod}
-    points: List[Tuple[float, float, float, float]] = []
+    uncertain = fu.has_uncertainty_model(mod)
+    points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]] = []
     warnings: List[str] = []
     date = date_start
     while date <= date_end + 1e-9:
         try:
-            if mod == "gufm1":
+            if uncertain:
+                r = fu.field_uncertainty_at(lat, lon, alt_km, date, mod)
+                if r is None:
+                    raise ValueError("date outside the uncertainty model's spline range")
+                dec, inc, f_nt, ddec, dinc, df_nt = r
+                points.append((date, dec, inc, f_nt / 1000.0, ddec, dinc, df_nt / 1000.0))
+            elif mod == "gufm1":
                 dec, inc, f_nt = _gufm1_dif(lat, lon, alt_km, date)
+                points.append((date, float(dec), float(inc), float(f_nt) / 1000.0, None, None, None))
             else:
                 dec, inc, f_nt = ipmag.igrf([date, alt_km, lat, lon], **kwargs)
-            points.append((date, float(dec), float(inc), float(f_nt) / 1000.0))
+                points.append((date, float(dec), float(inc), float(f_nt) / 1000.0, None, None, None))
         except Exception as e:
             warnings.append(f"{date:g}: {type(e).__name__}: {e}")
         date += step
@@ -556,13 +585,23 @@ def read_field_curve_data(path: str) -> List[Tuple[float, float, float, float, O
 
 
 def plot_field_curve(
-    points: List[Tuple[float, float, float, float]], title: str = "",
+    points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
+    title: str = "",
     data_points: Optional[List[Tuple[float, float, float, float, Optional[float], Optional[float]]]] = None,
 ):
     """3 sous-graphiques empiles (Dec/Inc/Intensity vs date), meme
     convention de sauvegarde (PNG dans un dossier temporaire, chemin
     retourne pour `app._show_images`) que les autres fonctions de trace de
     ce module.
+
+    `points[i]` = (date, dec, inc, f_uT, ddec, dinc, df_uT) - les 3
+    derniers (voir stereo_pmagpy.predicted_field_curve/
+    field_uncertainty.py) sont None pour la plupart des modeles (pas
+    d'incertitude disponible localement) : une enveloppe ombree
+    (mean +/- incertitude) est alors tracee en plus du trait moyen,
+    SEULEMENT sur les points qui en portent une - demande explicite
+    utilisateur ("il y a des vieilles sources en Fortran pour calculer
+    des incertitudes... est-ce possible d'integrer une partie").
 
     `data_points` (optionnel - voir read_field_curve_data) : donnees REELLES
     datees (age, dec, inc, a95, intensity_ou_None, dintensity_ou_None),
@@ -595,6 +634,18 @@ def plot_field_curve(
     axes[2].plot(dates, f_ut, "g.-")
     axes[2].set_ylabel("Intensity (µT)")
     axes[2].set_xlabel("Date (years CE)")
+    # Enveloppe d'incertitude (mean +/- 1 sigma) - matplotlib casse
+    # naturellement le remplissage la ou les valeurs sont NaN, donc les
+    # points SANS incertitude (ddec/dinc/df_uT=None) laissent simplement
+    # un trou dans la bande plutot que de fausser l'echelle ou planter.
+    if any(p[4] is not None for p in points):
+        ddec = np.array([p[4] if p[4] is not None else np.nan for p in points])
+        dinc = np.array([p[5] if p[5] is not None else np.nan for p in points])
+        df_ut = np.array([p[6] if p[6] is not None else np.nan for p in points])
+        dec_a, inc_a, f_a = np.array(dec), np.array(inc), np.array(f_ut)
+        axes[0].fill_between(dates, dec_a - ddec, dec_a + ddec, color="b", alpha=0.15, linewidth=0)
+        axes[1].fill_between(dates, inc_a - dinc, inc_a + dinc, color="r", alpha=0.15, linewidth=0)
+        axes[2].fill_between(dates, f_a - df_ut, f_a + df_ut, color="g", alpha=0.15, linewidth=0)
     if data_points:
         d_ages = [p[0] for p in data_points]
         d_dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in data_points]
@@ -621,16 +672,26 @@ def plot_field_curve(
 
 
 def write_field_curve_file(
-    points: List[Tuple[float, float, float, float]], path: str,
+    points: List[Tuple[float, float, float, float, Optional[float], Optional[float], Optional[float]]],
+    path: str,
     lat: float, lon: float, alt_km: float, model_label: str,
 ) -> None:
-    """Fichier texte tabule (date, dec, inc, intensite en uT), en-tete
-    commente (#...) - meme convention que les fichiers "Project"
-    (STARpaleomag_Py/export_stereo), directement relisable par un tableur
-    ou un autre script sans plus de traitement."""
+    """Fichier texte tabule (date, dec, inc, intensite en uT, +
+    incertitudes ddec/dinc/dintensite si disponibles - voir
+    field_uncertainty.py), en-tete commente (#...) - meme convention que
+    les fichiers "Project" (STARpaleomag_Py/export_stereo), directement
+    relisable par un tableur ou un autre script sans plus de traitement.
+    Les colonnes d'incertitude valent "n.d" (convention de ce projet pour
+    une donnee manquante) quand `mod` n'a pas d'incertitude disponible
+    localement."""
     with open(path, "w", encoding="utf-8") as f:
         f.write(f"# predicted field curve - model: {model_label}\n")
         f.write(f"# site: lat={lat:.4f}  lon={lon:.4f}  altitude={alt_km:.2f} km\n")
-        f.write("#date\tdec\tinc\tintensity_uT\n")
-        for date, dec, inc, f_ut in points:
-            f.write(f"{date:g}\t{dec:.2f}\t{inc:.2f}\t{f_ut:.3f}\n")
+        f.write("#date\tdec\tinc\tintensity_uT\tddec\tdinc\tdintensity_uT\n")
+        for date, dec, inc, f_ut, ddec, dinc, df_ut in points:
+            ddec_s = f"{ddec:.2f}" if ddec is not None else "n.d"
+            dinc_s = f"{dinc:.2f}" if dinc is not None else "n.d"
+            df_ut_s = f"{df_ut:.3f}" if df_ut is not None else "n.d"
+            f.write(
+                f"{date:g}\t{dec:.2f}\t{inc:.2f}\t{f_ut:.3f}\t{ddec_s}\t{dinc_s}\t{df_ut_s}\n"
+            )
