@@ -671,21 +671,20 @@ def plot_field_curve(
     plt.close("all")
     dates = [p[0] for p in points]
     # Declinaison ramenee a [-180, 180] (300 -> -60) plutot que le [0,360)
-    # natif d'ipmag.igrf/pmag.cart2dir - demande explicite utilisateur
-    # ("pour les graphiques de declinaison, comme il s'agit de champ
-    # recent, faire l'echelle entre -60 et +60 (300 =-60)") : evite le saut
-    # 350->5 a chaque passage par 0/360, et rend l'echelle -60/+60 ci-
-    # dessous lisible pour une declinaison qui oscille autour de 0 (champ
-    # recent - une excursion paleosecular-variation de plusieurs dizaines
-    # de degres resterait visible, juste coupee au bord du cadre si elle
-    # depasse cette echelle plutot que de la re-elargir automatiquement).
+    # natif d'ipmag.igrf/pmag.cart2dir - evite le saut 350->5 a chaque
+    # passage par 0/360 (toujours necessaire independamment de l'echelle
+    # Y, fixe ou automatique).
     dec = [p[1] - 360.0 if p[1] > 180.0 else p[1] for p in points]
     inc = [p[2] for p in points]
     f_ut = [p[3] for p in points]
+    ddec = np.array([p[4] if p[4] is not None else np.nan for p in points])
+    dinc = np.array([p[5] if p[5] is not None else np.nan for p in points])
+    df_ut = np.array([p[6] if p[6] is not None else np.nan for p in points])
+    has_envelope = bool(np.any(~np.isnan(ddec)))
+
     fig, axes = plt.subplots(3, 1, sharex=True, figsize=(8, 8))
     axes[0].plot(dates, dec, "b.-", label="predicted" if data_points else None)
     axes[0].set_ylabel("Declination (°)")
-    axes[0].set_ylim(-60.0, 60.0)
     axes[1].plot(dates, inc, "r.-")
     axes[1].set_ylabel("Inclination (°)")
     axes[2].plot(dates, f_ut, "g.-")
@@ -695,14 +694,41 @@ def plot_field_curve(
     # naturellement le remplissage la ou les valeurs sont NaN, donc les
     # points SANS incertitude (ddec/dinc/df_uT=None) laissent simplement
     # un trou dans la bande plutot que de fausser l'echelle ou planter.
-    if any(p[4] is not None for p in points):
-        ddec = np.array([p[4] if p[4] is not None else np.nan for p in points])
-        dinc = np.array([p[5] if p[5] is not None else np.nan for p in points])
-        df_ut = np.array([p[6] if p[6] is not None else np.nan for p in points])
-        dec_a, inc_a, f_a = np.array(dec), np.array(inc), np.array(f_ut)
+    dec_a, inc_a, f_a = np.array(dec), np.array(inc), np.array(f_ut)
+    if has_envelope:
         axes[0].fill_between(dates, dec_a - ddec, dec_a + ddec, color="b", alpha=0.15, linewidth=0)
         axes[1].fill_between(dates, inc_a - dinc, inc_a + dinc, color="r", alpha=0.15, linewidth=0)
         axes[2].fill_between(dates, f_a - df_ut, f_a + df_ut, color="g", alpha=0.15, linewidth=0)
+
+    # Echelle de declinaison AUTOMATIQUE - demande explicite utilisateur
+    # ("can you adjust automatically the declination Y axis"), remplace
+    # l'echelle fixe -60/+60 demandee dans une session precedente : bornee
+    # par ce qui est REELLEMENT affiche (courbe predite +/- enveloppe
+    # d'incertitude, et donnees reelles superposees +/- a95) plutot que de
+    # risquer de couper silencieusement une excursion/un point hors
+    # -60/+60 (ex. un site avec une forte declinaison reelle n'apparaissait
+    # alors pas du tout). Marge de 10% (min 5 deg) + plancher de 20 deg
+    # d'etendue totale pour rester lisible si la declinaison varie tres
+    # peu sur la periode choisie, au lieu d'un zoom degenere sur un trait
+    # quasi plat.
+    dec_vals = list(dec)
+    if has_envelope:
+        valid = ~np.isnan(ddec)
+        dec_vals += list(dec_a[valid] - ddec[valid]) + list(dec_a[valid] + ddec[valid])
+    if data_points:
+        for p in data_points:
+            if p[1] is not None:
+                d = p[1] - 360.0 if p[1] > 180.0 else p[1]
+                a95 = p[3] if p[3] is not None else 0.0
+                dec_vals += [d - a95, d + a95]
+    dec_lo, dec_hi = min(dec_vals), max(dec_vals)
+    pad = max(5.0, 0.1 * (dec_hi - dec_lo))
+    dec_lo, dec_hi = dec_lo - pad, dec_hi + pad
+    if dec_hi - dec_lo < 20.0:
+        mid = (dec_hi + dec_lo) / 2.0
+        dec_lo, dec_hi = mid - 10.0, mid + 10.0
+    axes[0].set_ylim(dec_lo, dec_hi)
+
     if data_points:
         dir_rows = [p for p in data_points if p[1] is not None]
         if dir_rows:
