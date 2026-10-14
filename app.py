@@ -270,15 +270,36 @@ class StereoUtilsApp:
         self.text_area.insert(tk.END, text)
         self.text_area.see(tk.END)
 
+    def _focus_console_input(self, waiting):
+        """Donne le focus clavier a la console des qu'une question y est
+        posee - meme correctif que STARpaleomag_Py (demande explicite
+        utilisateur, "apres l'utilisation du menu avec la souris, il est
+        necessaire de clicker dans la fenetre texte avant de pouvoir
+        repondre a une question"). Sous macOS, une commande lancee depuis
+        la barre de menus s'execute AVANT que le menu natif ait fini de se
+        refermer : un simple focus_set() fait a ce moment est perdu. D'ou
+        focus_force() (fenetre + console), repete apres 50 et 250 ms pour
+        passer apres la fermeture du menu - seulement tant que `waiting()`
+        indique que la question attend encore sa reponse."""
+        def grab():
+            if not waiting():
+                return
+            self.root.focus_force()
+            self.text_area.focus_force()
+            self.text_area.mark_set(tk.INSERT, tk.END)
+        grab()
+        self.root.after(50, grab)
+        self.root.after(250, grab)
+
     def _console_input(self, prompt, default=""):
         self.text_area.insert(tk.END, prompt, "prompt")
         start_index = self.text_area.index("end-1c")
         self.text_area.mark_set(tk.INSERT, tk.END)
         self.text_area.see(tk.END)
-        self.text_area.focus_set()
 
         outcome = {"value": None}
         done = tk.BooleanVar(value=False)
+        self._focus_console_input(lambda: not done.get())
 
         def on_return(event):
             typed = self.text_area.get(start_index, "end-1c")
