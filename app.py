@@ -54,6 +54,8 @@ from curie_kt import (
     apply_vessel_correction, normalize_by_mass, normalize_by_volume,
     curie_point_second_derivative, build_kt_figure,
 )
+from kt_magic import export_kt_magic, read_curie_temps
+from hyst_magic import export_hyst_magic, read_mass_table
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
     vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
@@ -154,6 +156,7 @@ class StereoUtilsApp:
         self.kt_curve = None          # curie_kt.KTCurve courante
         self.kt_sample_list = {}      # Dict[str, KTListEntry], voir read_kt_sample_list
         self.kt_list_dir = None       # repertoire de la liste chargee (resout les noms de fichier)
+        self.kt_list_path = None      # liste chargee (K-T > Export to MagIC...)
         self.kt_curie_heating = None
         self.kt_curie_cooling = None
 
@@ -909,6 +912,8 @@ class StereoUtilsApp:
             label="Curie Point (2nd derivative)", command=self._menu_cmd("kt", self.kt_curie_point))
         kt_menu.add_separator()
         kt_menu.add_command(label="Plot K-T", command=self._menu_cmd("kt", self.kt_plot))
+        kt_menu.add_separator()
+        kt_menu.add_command(label="Export to MagIC...", command=self._menu_cmd("kt", self.kt_export_magic))
         menubar.add_cascade(label="K-T", menu=kt_menu)
 
         hyst_menu = tk.Menu(menubar, tearoff=0)
@@ -927,6 +932,9 @@ class StereoUtilsApp:
         hyst_menu.add_checkbutton(
             label=self._labeled("Normalize Plot", "hystnorm"),
             variable=self.hyst_normalize, command=self._menu_cmd("hysteresis", self.hyst_refresh_plot))
+        hyst_menu.add_separator()
+        hyst_menu.add_command(
+            label="Export AGM Lists to MagIC...", command=self._menu_cmd("hysteresis", self.hyst_export_magic))
         menubar.add_cascade(label="Hysteresis", menu=hyst_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -3354,6 +3362,7 @@ class StereoUtilsApp:
             return
         self.kt_sample_list = read_kt_sample_list(path)
         self.kt_list_dir = os.path.dirname(path)
+        self.kt_list_path = path
         self._afficher(f"{len(self.kt_sample_list)} sample-list entry/entries loaded from "
                         f"{os.path.basename(path)}\n")
 
@@ -3474,6 +3483,58 @@ class StereoUtilsApp:
             return
         self.kt_curve = apply_furnace_correction(self.kt_curve, zerodia)
         self._afficher(f"Furnace correction applied (subtracted {zerodia:g}).\n")
+
+    def kt_export_magic(self):
+        """Toute la liste d'echantillons -> fichier MagIC (specimens +
+        measurements), meme pipeline que Select File from List... - voir
+        kt_magic.py. Le .prmag (optionnel) restreint l'export aux
+        echantillons de l'etude ; le fichier de temperatures de Curie
+        (optionnel, "specimen Tc_degC") remplit critical_temp."""
+        if not self.kt_list_path:
+            messagebox.showwarning("No sample list", "Open a sample list first (Open Sample List...).")
+            return
+        prmag = filedialog.askopenfilename(
+            title="Paleomag .prmag of the study (Cancel = export the whole list)",
+            filetypes=[("STARpaleomag data", "*.prmag"), ("All files", "*.*")])
+        curie_temps = None
+        ans = self._console_input("Curie temperatures validated in a file (specimen Tc_degC)? y/N: ", "N")
+        if ans is None:
+            return
+        if ans.strip().lower() == "y":
+            tc_path = filedialog.askopenfilename(
+                title="Curie temperatures (specimen Tc_degC)",
+                filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+            if tc_path:
+                curie_temps = read_curie_temps(tc_path)
+        instrument = self._console_input("Instrument: ", "AGICO KLY-3 CS-3")
+        if instrument is None:
+            return
+        analysts = self._console_input("Analysts' names (separated by ':'): ", "")
+        if analysts is None:
+            return
+        stem = os.path.splitext(os.path.basename(prmag or self.kt_list_path))[0]
+        out_path = filedialog.asksaveasfilename(
+            title="MagIC K-T file", defaultextension=".txt",
+            initialdir=os.path.dirname(prmag or self.kt_list_path),
+            initialfile=f"{stem}_KT_MagIC.txt", filetypes=[("MagIC text", "*.txt")])
+        if not out_path:
+            return
+        try:
+            result = export_kt_magic(
+                self.kt_list_path, out_path, prmag or None, instrument=instrument.strip(),
+                analysts=analysts.strip(), curie_temps=curie_temps)
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", f"MagIC export failed:\n{e}")
+            return
+        n_tc = sum(1 for r in result.specimens if r.get("critical_temp"))
+        msg = (f"MagIC K-T export: {len(result.specimens)} specimen(s), "
+               f"{len(result.measurements)} measurement(s), {n_tc} Curie temperature(s) "
+               f"-> {out_path}\n")
+        if result.report:
+            msg += f"{len(result.report)} list entry/entries not exported:\n  " + "\n  ".join(result.report) + "\n"
+        msg += ("Add this file in STARpaleomag_Py, File > export to Magic database "
+                "(question \"Add rock-magnetic data\").\n")
+        self._afficher(msg)
 
     def kt_normalize_by_mass(self):
         """Equivalent de `normas` (CurieOSX_x.f95:293-330, voir
@@ -3694,6 +3755,64 @@ class StereoUtilsApp:
         self._hyst_show_pmagpy_crosscheck(res)
         self.clear_screen()  # nouvel echantillon - Clear Screen systematique, voir plot_screen.
         self.hyst_refresh_plot()
+
+    def hyst_export_magic(self):
+        """Une ou plusieurs listes AGM -> fichier MagIC (specimens +
+        measurements), meme calcul que Select Sample to Plot... avec le
+        seuil paramagnetique courant - voir hyst_magic.py. Le(s) .prmag
+        de l'etude rattache(nt) les noms de fichier sans prefixe d'annee
+        (cb0105 -> 13CB0105) et restreignent l'export a l'etude ; la
+        table de pesees (optionnelle, "nom ... masse_mg") remplace les
+        masses provisoires des listes."""
+        lists = filedialog.askopenfilenames(
+            title="AGM sample list(s)", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+        if not lists:
+            return
+        prmags = filedialog.askopenfilenames(
+            title="Paleomag .prmag of the study",
+            filetypes=[("STARpaleomag data", "*.prmag"), ("All files", "*.*")])
+        if not prmags:
+            return
+        mass_table = None
+        ans = self._console_input("Weighing table with the masses (name ... mass_mg)? y/N: ", "N")
+        if ans is None:
+            return
+        if ans.strip().lower() == "y":
+            mpath = filedialog.askopenfilename(
+                title="Weighing table", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+            if mpath:
+                mass_table = read_mass_table(mpath)
+        instrument = self._console_input("Instrument: ", "Princeton MicroMag AGM 2900")
+        if instrument is None:
+            return
+        analysts = self._console_input("Analysts' names (separated by ':'): ", "")
+        if analysts is None:
+            return
+        stem = os.path.splitext(os.path.basename(prmags[0]))[0]
+        out_path = filedialog.asksaveasfilename(
+            title="MagIC hysteresis file", defaultextension=".txt",
+            initialdir=os.path.dirname(prmags[0]),
+            initialfile=f"{stem}_Hyst_MagIC.txt", filetypes=[("MagIC text", "*.txt")])
+        if not out_path:
+            return
+        try:
+            result = export_hyst_magic(
+                list(lists), out_path, list(prmags), mass_table, self.hyst_valsat_frac,
+                instrument=instrument.strip(), analysts=analysts.strip())
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", f"MagIC export failed:\n{e}")
+            return
+        n_par = sum(1 for r in result.specimens if r.get("hyst_bc"))
+        n_mass = sum(1 for r in result.specimens if r.get("weight"))
+        msg = (f"MagIC hysteresis export: {len(result.specimens)} specimen(s) "
+               f"({n_par} with parameters, {n_mass} with a mass), "
+               f"{len(result.measurements)} measurement(s), paramagnetic threshold "
+               f"{self.hyst_valsat_frac:g} -> {out_path}\n")
+        if result.report:
+            msg += "  " + "\n  ".join(result.report) + "\n"
+        msg += ("Add this file in STARpaleomag_Py, File > export to Magic database "
+                "(question \"Add rock-magnetic data\").\n")
+        self._afficher(msg)
 
     def _hyst_show_pmagpy_crosscheck(self, res):
         """Affiche l'estimation INDEPENDANTE de pmagpy.rockmag.
