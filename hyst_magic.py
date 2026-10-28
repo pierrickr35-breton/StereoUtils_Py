@@ -11,8 +11,9 @@ Conventions MagIC reprises de PmagPy (convert_2_magic.agm) :
   (Am2, brut) - magn_mass (Am2/kg) en plus quand la masse est connue ;
 - courbe de remanence : LP-IRM-DCD, champ dans treat_dc_field (T),
   meas_field_dc = 0.
-- specimens : hyst_ms/hyst_mr (_mass si masse connue, sinon _moment),
-  hyst_bc, hyst_bcr (T), hyst_mr_ms, hyst_bcr_bc, hyst_xhf(_mass).
+- specimens : hyst_ms/hyst_mr/hyst_xhf en _moment toujours, et aussi
+  en _mass si masse connue (dayplot_magic ne lit que _moment) ; hyst_bc,
+  hyst_bcr (T), hyst_mr_ms, hyst_bcr_bc.
 
 Masse : la liste AGM (Liste_Fernando.txt) porte 1 partout, valeur
 provisoire - les vraies masses sont dans une table de pesees ("nom tare
@@ -197,13 +198,18 @@ def build_hyst_magic(
                 })
 
         # susc_para_si = pente (Am2/kg/T, ou Am2/T si masse inconnue) x mu0.
-        sfx = "_mass" if mass_kg else "_moment"
+        # Masse connue : moments ecrits aussi (x masse) - ipmag.dayplot_magic
+        # ne lit que hyst_mr_moment/hyst_ms_moment.
+        k = mass_kg or 1.0
         params = {
-            f"hyst_ms{sfx}": _g(res.js_ferro), f"hyst_mr{sfx}": _g(res.jrs),
+            "hyst_ms_moment": _g(res.js_ferro * k), "hyst_mr_moment": _g(res.jrs * k),
+            "hyst_xhf": _g(res.susc_para_si * k),
             "hyst_mr_ms": _g(res.jrs_over_jsferro), "hyst_bc": _g(res.hc_mt * 1.0e-3),
             "hyst_bcr": _g(res.hcr_mt * 1.0e-3), "hyst_bcr_bc": _g(res.hcr_over_hc),
-            ("hyst_xhf_mass" if mass_kg else "hyst_xhf"): _g(res.susc_para_si),
         } if ok else {}
+        if ok and mass_kg:
+            params.update({"hyst_ms_mass": _g(res.js_ferro), "hyst_mr_mass": _g(res.jrs),
+                           "hyst_xhf_mass": _g(res.susc_para_si)})
         row = {
             **common, "sample": sample,
             "method_codes": "LP-HYS" + (":LP-IRM-DCD" if backfield is not None else ""),
