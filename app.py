@@ -56,6 +56,7 @@ from curie_kt import (
 )
 from kt_magic import export_kt_magic, read_curie_temps
 from hyst_magic import export_hyst_magic, read_mass_table
+import magic_rockmag_view as mrv
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
     vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
@@ -168,6 +169,9 @@ class StereoUtilsApp:
         self.hyst_format = None       # "AGM" ou "VSM"
         self.hyst_result = None       # curie_hyst.HysteresisResult courant
         self.hyst_valsat_frac = 0.7   # seuil haut-champ du fit paramagnetique (prefhyste/valsat)
+        # Contribution MagIC relue avec PmagPy (magic_rockmag_view.py),
+        # partagee par les menus K-T et Hysteresis.
+        self.magic_rockmag = None
         self.hyst_normalize = tk.BooleanVar(value=False)  # demande explicite "normalize each plot"
         self.hyst_max_field = None    # None = auto ; sinon borne X explicite (Tesla)
 
@@ -914,6 +918,9 @@ class StereoUtilsApp:
         kt_menu.add_command(label="Plot K-T", command=self._menu_cmd("kt", self.kt_plot))
         kt_menu.add_separator()
         kt_menu.add_command(label="Export to MagIC...", command=self._menu_cmd("kt", self.kt_export_magic))
+        kt_menu.add_separator()
+        kt_menu.add_command(
+            label="Read MagIC Contribution (PmagPy)...", command=self._menu_cmd("kt", self.kt_read_magic))
         menubar.add_cascade(label="K-T", menu=kt_menu)
 
         hyst_menu = tk.Menu(menubar, tearoff=0)
@@ -935,6 +942,11 @@ class StereoUtilsApp:
         hyst_menu.add_separator()
         hyst_menu.add_command(
             label="Export AGM Lists to MagIC...", command=self._menu_cmd("hysteresis", self.hyst_export_magic))
+        hyst_menu.add_separator()
+        hyst_menu.add_command(
+            label="Read MagIC Contribution (PmagPy)...", command=self._menu_cmd("hysteresis", self.hyst_read_magic))
+        hyst_menu.add_command(
+            label="MagIC Day Plot (PmagPy)", command=self._menu_cmd("hysteresis", self.hyst_magic_day_plot))
         menubar.add_cascade(label="Hysteresis", menu=hyst_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
@@ -3889,6 +3901,132 @@ class StereoUtilsApp:
         self._hyst_show_pmagpy_crosscheck(res)
         self.clear_screen()  # nouvel echantillon - Clear Screen systematique, voir plot_screen.
         self.hyst_refresh_plot()
+
+    # ------------------------------------------------------------------
+    # Relecture d'une contribution MagIC avec PmagPy (magic_rockmag_view.py)
+    # - demande explicite utilisateur ("mettre les outils PmagPy dans
+    # Stereo_Utils pour lire les donnees de rockmag (KT et Hysteresis)
+    # des contributions Magic").
+    # ------------------------------------------------------------------
+
+    def _magic_rockmag_load(self, kind):
+        """Contribution deja chargee -> proposee a nouveau (meme fichier
+        pour K-T et Hysteresis), sinon dialogue d'ouverture."""
+        if self.magic_rockmag is not None:
+            ans = self._console_input(
+                f"Use the MagIC file already read ({os.path.basename(self.magic_rockmag.path)})? Y/n: ", "Y")
+            if ans is None:
+                return None
+            if ans.strip().lower() != "n":
+                return self.magic_rockmag
+        path = filedialog.askopenfilename(
+            title=f"MagIC contribution or measurements file ({kind})",
+            filetypes=[("MagIC text", "*.txt"), ("All files", "*.*")])
+        if not path:
+            return None
+        try:
+            data = mrv.load_magic_contribution(path)
+        except ImportError:
+            messagebox.showerror("Error", "PmagPy (pmagpy) is not installed.")
+            return None
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", f"{os.path.basename(path)}: {e}")
+            return None
+        self.magic_rockmag = data
+        n_spec = 0 if data.specimens is None else len(data.specimens)
+        self._afficher(
+            f"MagIC file {os.path.basename(path)} read with PmagPy: {len(data.measurements)} "
+            f"measurements, {n_spec} specimen rows\n")
+        return data
+
+    def _magic_pick(self, labels):
+        """Liste numerotee dans la console, puis indices choisis un par un
+        (0/Escape = fin) - meme boucle que hyst_select_from_list."""
+        self._afficher("\n".join(f"{i:3d} : {t}" for i, t in enumerate(labels, start=1)) + "\n")
+        while True:
+            choice_s = self._console_input(
+                f"Line number to plot (0 or Escape to stop, 1-{len(labels)}): ", "0")
+            if choice_s is None or not choice_s.strip() or choice_s.strip() == "0":
+                return
+            try:
+                idx = int(choice_s)
+            except ValueError:
+                messagebox.showerror("Error", "Must be an integer.")
+                continue
+            if not (1 <= idx <= len(labels)):
+                messagebox.showerror("Error", f"Out of range (1-{len(labels)}).")
+                continue
+            yield idx - 1
+
+    def kt_read_magic(self):
+        """Experiences LP-X-T d'une contribution MagIC : courbe, derivee et
+        Tc par rockmag.curie_temperature_estimates (PmagPy)."""
+        data = self._magic_rockmag_load("K-T")
+        if data is None:
+            return
+        exps = mrv.kt_experiments(data)
+        if not exps:
+            messagebox.showwarning("No K-T data", "No LP-X-T experiment in this file.")
+            return
+        s = self._console_input("Smoothing window for PmagPy (degC, 0 = none): ", "5")
+        if s is None:
+            return
+        try:
+            smooth = max(0.0, float(s))
+        except ValueError:
+            messagebox.showerror("Error", "Must be a number.")
+            return
+        for i in self._magic_pick([f"{spec:<16} {n:4d} points  ({e})" for e, spec, n in exps]):
+            exp_name, spec, _ = exps[i]
+            exp, col = mrv.kt_experiment(data, exp_name)
+            if col is None:
+                messagebox.showerror("Error", f"{exp_name}: no susceptibility/magnetization column.")
+                continue
+            self.clear_screen()
+            try:
+                est = mrv.build_magic_kt_figure(self.fig, exp, col, spec, smooth)
+            except Exception as e:
+                messagebox.showerror("Error", f"{exp_name}: PmagPy failed ({e})")
+                continue
+            self._redraw_canvas()
+            self._afficher(f"{spec}\n" + mrv.format_kt_estimates(est, col, smooth))
+
+    def hyst_read_magic(self):
+        """Specimens LP-HYS / LP-IRM-DCD d'une contribution MagIC : boucle
+        traitee par rockmag.process_hyst_loop (PmagPy), courbe DCD et
+        parametres deposes dans la table specimens pour comparaison."""
+        data = self._magic_rockmag_load("hysteresis")
+        if data is None:
+            return
+        specs = mrv.hyst_specimens(data)
+        if not specs:
+            messagebox.showwarning("No hysteresis data", "No LP-HYS or LP-IRM-DCD experiment in this file.")
+            return
+        labels = [f"{h.specimen:<18} {'loop' if h.loop_experiment else '    '} "
+                  f"{'DCD' if h.dcd_experiment else ''}" for h in specs]
+        for i in self._magic_pick(labels):
+            self.clear_screen()
+            try:
+                res = mrv.build_magic_hyst_figure(self.fig, data, specs[i])
+            except Exception as e:
+                messagebox.showerror("Error", f"{specs[i].specimen}: PmagPy failed ({e})")
+                continue
+            self._redraw_canvas()
+            self._afficher(mrv.format_magic_hyst(data, specs[i], res))
+
+    def hyst_magic_day_plot(self):
+        """Day plot de pmagplotlib.plot_day sur la table specimens de la
+        contribution MagIC."""
+        data = self._magic_rockmag_load("Day plot")
+        if data is None:
+            return
+        self.clear_screen()
+        n = mrv.build_magic_day_figure(self.fig, data)
+        self._redraw_canvas()
+        x, y, names = mrv.day_plot_values(data)
+        lines = [f"Day plot (PmagPy pmagplotlib.plot_day): {n} specimens with Mr/Ms and Bcr/Bc"]
+        lines += [f"  {nm:<18} Bcr/Bc {a:7.3f}  Mr/Ms {b:6.4f}" for nm, a, b in zip(names, x, y)]
+        self._afficher("\n".join(lines) + "\n")
 
     def hyst_refresh_plot(self):
         """Redessine self.hyst_result avec les reglages courants
