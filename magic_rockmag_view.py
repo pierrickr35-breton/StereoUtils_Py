@@ -307,9 +307,11 @@ def day_plot_values(data: MagicRockmag) -> Tuple[np.ndarray, np.ndarray, List[st
     return bcrbc[ok].to_numpy(), mrms[ok].to_numpy(), list(sp.loc[ok, "specimen"])
 
 
-def build_magic_day_figure(fig, data: MagicRockmag) -> int:
+def build_magic_day_figure(fig, data: MagicRockmag, xmax: Optional[float] = None) -> int:
     """Day plot de pmagplotlib.plot_day (figure pyplot temporaire, lignes
-    recopiees dans `fig`). Retourne le nombre de specimens."""
+    recopiees dans `fig`). `xmax` : borne de l'axe Bcr/Bc (None = 6, celle
+    de PmagPy) - demande explicite utilisateur ("l'echelle en X peut elle
+    etre changee, si necessaire"). Retourne le nombre de specimens."""
     import matplotlib.pyplot as plt
     from pmagpy import pmagplotlib
     x, y, names = day_plot_values(data)
@@ -332,7 +334,7 @@ def build_magic_day_figure(fig, data: MagicRockmag) -> int:
                     color=ln.get_color(), lw=ln.get_linewidth(), ms=ln.get_markersize())
         for t in src.texts:
             ax.text(*t.get_position(), t.get_text(), fontsize=7, color=t.get_color())
-        ax.set_xlim(src.get_xlim())
+        ax.set_xlim(0, xmax if xmax else src.get_xlim()[1])
         ax.set_ylim(src.get_ylim())
     finally:
         plt.close(num)

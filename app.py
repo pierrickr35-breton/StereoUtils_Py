@@ -4020,10 +4020,25 @@ class StereoUtilsApp:
         data = self._magic_rockmag_load("Day plot")
         if data is None:
             return
-        self.clear_screen()
-        n = mrv.build_magic_day_figure(self.fig, data)
-        self._redraw_canvas()
         x, y, names = mrv.day_plot_values(data)
+        xmax = 6.0
+        if len(x) and x.max() > 6.0:
+            s = self._console_input(
+                f"{int((x > 6.0).sum())} specimen(s) beyond Bcr/Bc = 6 (max {x.max():.1f}). "
+                f"Bcr/Bc axis maximum (6 = PmagPy default): ", "6")
+            if s is None:
+                return
+            try:
+                xmax = float(s)
+            except ValueError:
+                messagebox.showerror("Error", "Must be a number.")
+                return
+            if xmax <= 1.0:
+                messagebox.showerror("Error", "Must be greater than 1.")
+                return
+        self.clear_screen()
+        n = mrv.build_magic_day_figure(self.fig, data, xmax)
+        self._redraw_canvas()
         lines = [f"Day plot (PmagPy pmagplotlib.plot_day): {n} specimens with Mr/Ms and Bcr/Bc"]
         lines += [f"  {nm:<18} Bcr/Bc {a:7.3f}  Mr/Ms {b:6.4f}" for nm, a, b in zip(names, x, y)]
         self._afficher("\n".join(lines) + "\n")
