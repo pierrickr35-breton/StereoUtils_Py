@@ -967,7 +967,7 @@
       </div>
       <div class="item">
         <div class="label">Select File from List...</div>
-        <div class="desc">Browses the loaded sample list one entry at a time, applying whichever correction/normalization that entry specifies and plotting the result — the same "step through and pick" pattern used by the AGM/VSM/Hysteresis sample lists.</div>
+        <div class="desc">Shows the loaded sample list in a drop-down list in a small window, in the order of the list, with <strong>Previous</strong> and <strong>Next</strong> buttons. The first entry is shown at once; each entry chosen gets the correction and normalization it specifies and is plotted. The AGM/VSM hysteresis lists work the same way.</div>
       </div>
       <div class="item">
         <div class="label">Furnace Correction</div>
@@ -991,7 +991,7 @@
       </div>
       <div class="item">
         <div class="label">Read MagIC Contribution (PmagPy)...</div>
-        <div class="desc">Reads back the K-T data of a MagIC file the way PmagPy sees it — a contribution downloaded from MagIC or written by an export (split into tables by <code>ipmag.download_magic</code>), or a single <code>measurements.txt</code>. The <code>LP-X-T</code> experiments are listed in the console; each one chosen is processed by PmagPy's <code>rockmag</code> module: heating/cooling branches (<code>meas_temp</code> in K shown in °C, susceptibility column <code>susc_chi_mass</code> or else <code>susc_chi_volume</code>), their derivative, and the Curie temperatures of <code>curie_temperature_estimates</code> (inflection point — marked on the plot — maximum curvature, and the Curie-Weiss fit of 1/χ, which gives the paramagnetic Curie temperature, above Tc). The smoothing window (°C) is asked once; an estimate at the first or last temperature of a branch is an edge artefact. The file read stays loaded for the Hysteresis menu items below.</div>
+        <div class="desc">Reads back the K-T data of a MagIC file the way PmagPy sees it — a contribution downloaded from MagIC or written by an export (split into tables by <code>ipmag.download_magic</code>), or a single <code>measurements.txt</code>. The <code>LP-X-T</code> experiments appear in a drop-down list in a small window, sorted by specimen, with <strong>Previous</strong> and <strong>Next</strong> buttons; the first is shown at once, and each one chosen is processed by PmagPy's <code>rockmag</code> module: heating/cooling branches (<code>meas_temp</code> in K shown in °C, susceptibility column <code>susc_chi_mass</code> or else <code>susc_chi_volume</code>), their derivative, and the Curie temperatures of <code>curie_temperature_estimates</code> (inflection point — marked on the plot — maximum curvature, and the Curie-Weiss fit of 1/χ, which gives the paramagnetic Curie temperature, above Tc). The smoothing window (°C) is asked once; an estimate at the first or last temperature of a branch is an edge artefact. The file read stays loaded for the Hysteresis menu items below.</div>
       </div>
     </section>
 
@@ -1006,7 +1006,7 @@
       </div>
       <div class="item">
         <div class="label">Select Sample to Plot...</div>
-        <div class="desc">Steps through the loaded AGM/VSM sample list, computing and plotting each one.</div>
+        <div class="desc">Shows the loaded AGM/VSM sample list in the same drop-down window as <code>Select File from List...</code>, computing and plotting each entry chosen.</div>
       </div>
       <div class="item">
         <div class="label">Open VFTB File...</div>
@@ -1027,7 +1027,7 @@
       </div>
       <div class="item">
         <div class="label">Read MagIC Contribution (PmagPy)...</div>
-        <div class="desc">Same file reading as the K-T item (the file already read is offered again). Specimens with an <code>LP-HYS</code> loop and/or an <code>LP-IRM-DCD</code> remanence curve are listed; for each one chosen, the loop goes through PmagPy's <code>rockmag.process_hyst_loop</code> (Jackson &amp; Solheid gridding, centring, drift and high-field slope correction, closure and saturation tests) and the measured and slope-corrected loops are plotted, with the DCD curve and its Bcr (zero crossing, field in <code>treat_dc_field</code>) below. The console gives PmagPy's Ms, Mr, Bc, Brh and χHF next to the values stored in the contribution's <code>specimens</code> table, for comparison.</div>
+        <div class="desc">Same file reading as the K-T item (the file already read is offered again). Specimens with an <code>LP-HYS</code> loop and/or an <code>LP-IRM-DCD</code> remanence curve appear in the same drop-down window; for each one chosen, the loop goes through PmagPy's <code>rockmag.process_hyst_loop</code> (Jackson &amp; Solheid gridding, centring, drift and high-field slope correction, closure and saturation tests) and the measured and slope-corrected loops are plotted, with the DCD curve and its Bcr (zero crossing, field in <code>treat_dc_field</code>) below. The console gives PmagPy's Ms, Mr, Bc, Brh and χHF next to the values stored in the contribution's <code>specimens</code> table, for comparison.</div>
       </div>
       <div class="item">
         <div class="label">MagIC Day Plot (PmagPy)</div>

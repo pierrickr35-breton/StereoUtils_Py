@@ -172,6 +172,7 @@ class StereoUtilsApp:
         # Contribution MagIC relue avec PmagPy (magic_rockmag_view.py),
         # partagee par les menus K-T et Hysteresis.
         self.magic_rockmag = None
+        self._sample_pick_window = None  # menu deroulant des echantillons, voir _pick_sample
         self.hyst_normalize = tk.BooleanVar(value=False)  # demande explicite "normalize each plot"
         self.hyst_max_field = None    # None = auto ; sinon borne X explicite (Tesla)
 
@@ -3385,39 +3386,20 @@ class StereoUtilsApp:
         (constante ou vase vide selon `zerodia`, voir _kt_correct_with_
         entry) PUIS la normalisation appropriee (volume si `suscep!=0`,
         sinon masse si `masse!=0`, sinon aucune - meme choix que le
-        Fortran), calcule le point de Curie et trace la courbe - boucle
-        jusqu'a "0"/Escape pour passer a l'echantillon suivant (demande
-        explicite utilisateur "when we open the list, we should be able
-        to go through and select the sample to plot")."""
+        Fortran), calcule le point de Curie et trace la courbe - menu
+        deroulant, voir _pick_sample (demande explicite utilisateur "when
+        we open the list, we should be able to go through and select the
+        sample to plot")."""
         if not self.kt_sample_list:
             messagebox.showwarning("No sample list", "Open a sample list first (Open Sample List...).")
             return
         entries = list(self.kt_sample_list.values())
-        lines = []
-        for i, e in enumerate(entries, start=1):
+        labels = []
+        for e in entries:
             extra = f"  vessel={e.empty_vessel}" if e.empty_vessel else ""
-            lines.append(
-                f"{i:3d} : {e.filename:<16} suscep={e.suscep:g}  masse={e.masse:g}  "
-                f"zerodia={e.zerodia:g}{extra}")
-        self._afficher("\n".join(lines) + "\n")
-
-        while True:
-            choice_s = self._console_input(
-                f"Line number to open+plot (0 or Escape to stop, 1-{len(entries)}): ", "0")
-            if choice_s is None:
-                return
-            choice_s = choice_s.strip()
-            if not choice_s or choice_s == "0":
-                return
-            try:
-                idx = int(choice_s)
-            except ValueError:
-                messagebox.showerror("Error", "Must be an integer.")
-                continue
-            if not (1 <= idx <= len(entries)):
-                messagebox.showerror("Error", f"Out of range (1-{len(entries)}).")
-                continue
-            self._kt_process_list_entry(entries[idx - 1])
+            labels.append(f"{e.filename}  -  suscep={e.suscep:g}  masse={e.masse:g}  zerodia={e.zerodia:g}{extra}")
+        for i in self._pick_sample("K-T sample list", labels):
+            self._kt_process_list_entry(entries[i])
 
     def _kt_process_list_entry(self, entry):
         """Pipeline automatique d'UNE entree de liste - voir kt_select_
@@ -3695,36 +3677,16 @@ class StereoUtilsApp:
         we should be able to go through and select the sample to plot",
         appliquee ici aussi) : pour l'entree choisie, ouvre ses 2
         fichiers (boucle + remanence/DCD, format AGM ou VSM selon
-        `self.hyst_format`), calcule Js/Jrs/Hc/Hcr et trace - boucle
-        jusqu'a "0"/Escape."""
+        `self.hyst_format`), calcule Js/Jrs/Hc/Hcr et trace - menu
+        deroulant, voir _pick_sample."""
         if not self.hyst_sample_list:
             messagebox.showwarning(
                 "No sample list", "Open an AGM or VSM sample list first.")
             return
         entries = list(self.hyst_sample_list.values())
-        lines = [
-            f"{i:3d} : {e.filename:<14} masse={e.masse:g} mg"
-            for i, e in enumerate(entries, start=1)
-        ]
-        self._afficher(f"({self.hyst_format})\n" + "\n".join(lines) + "\n")
-
-        while True:
-            choice_s = self._console_input(
-                f"Line number to open+plot (0 or Escape to stop, 1-{len(entries)}): ", "0")
-            if choice_s is None:
-                return
-            choice_s = choice_s.strip()
-            if not choice_s or choice_s == "0":
-                return
-            try:
-                idx = int(choice_s)
-            except ValueError:
-                messagebox.showerror("Error", "Must be an integer.")
-                continue
-            if not (1 <= idx <= len(entries)):
-                messagebox.showerror("Error", f"Out of range (1-{len(entries)}).")
-                continue
-            self._hyst_process_entry(entries[idx - 1])
+        labels = [f"{e.filename}  -  masse={e.masse:g} mg" for e in entries]
+        for i in self._pick_sample(f"{self.hyst_format} sample list", labels):
+            self._hyst_process_entry(entries[i])
 
     def _hyst_process_entry(self, entry):
         """Pipeline automatique d'UNE entree de liste - voir hyst_select_
@@ -3939,24 +3901,40 @@ class StereoUtilsApp:
             f"measurements, {n_spec} specimen rows\n")
         return data
 
-    def _magic_pick(self, labels):
-        """Liste numerotee dans la console, puis indices choisis un par un
-        (0/Escape = fin) - meme boucle que hyst_select_from_list."""
-        self._afficher("\n".join(f"{i:3d} : {t}" for i, t in enumerate(labels, start=1)) + "\n")
-        while True:
-            choice_s = self._console_input(
-                f"Line number to plot (0 or Escape to stop, 1-{len(labels)}): ", "0")
-            if choice_s is None or not choice_s.strip() or choice_s.strip() == "0":
+    def _pick_sample(self, title, labels):
+        """Menu deroulant des echantillons (fenetre a part, le graphique et la
+        console restent visibles), Previous/Next pour les parcourir ; donne
+        l'indice de chaque choix jusqu'a la fermeture - demande explicite
+        utilisateur ("un menu deroulant pour la selection des echantillons")."""
+        if self._sample_pick_window is not None and self._sample_pick_window.winfo_exists():
+            self._sample_pick_window.destroy()
+        top = self._sample_pick_window = tk.Toplevel(self.root)
+        top.title(title)
+        top.transient(self.root)
+        box = ttk.Combobox(top, state="readonly", width=50, height=25, values=labels)
+        box.pack(fill=tk.X, padx=8, pady=8)
+        chosen = tk.IntVar(value=-1)  # -1 = fenetre fermee
+
+        def go_to(idx):
+            if 0 <= idx < len(labels):
+                box.current(idx)
+                chosen.set(idx)
+
+        buttons = ttk.Frame(top)
+        buttons.pack(fill=tk.X, padx=8, pady=(0, 8))
+        ttk.Button(buttons, text="Previous", command=lambda: go_to(box.current() - 1)).pack(side=tk.LEFT)
+        ttk.Button(buttons, text="Next", command=lambda: go_to(box.current() + 1)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(buttons, text="Close", command=top.destroy).pack(side=tk.RIGHT)
+        box.bind("<<ComboboxSelected>>", lambda _e: chosen.set(box.current()))
+        top.bind("<Destroy>", lambda e: chosen.set(-1) if e.widget is top else None)
+
+        box.current(0)
+        yield 0
+        while top.winfo_exists():
+            self.root.wait_variable(chosen)
+            if chosen.get() < 0:
                 return
-            try:
-                idx = int(choice_s)
-            except ValueError:
-                messagebox.showerror("Error", "Must be an integer.")
-                continue
-            if not (1 <= idx <= len(labels)):
-                messagebox.showerror("Error", f"Out of range (1-{len(labels)}).")
-                continue
-            yield idx - 1
+            yield chosen.get()
 
     def kt_read_magic(self):
         """Experiences LP-X-T d'une contribution MagIC : courbe, derivee et
@@ -3964,7 +3942,7 @@ class StereoUtilsApp:
         data = self._magic_rockmag_load("K-T")
         if data is None:
             return
-        exps = mrv.kt_experiments(data)
+        exps = sorted(mrv.kt_experiments(data), key=lambda e: e[1])
         if not exps:
             messagebox.showwarning("No K-T data", "No LP-X-T experiment in this file.")
             return
@@ -3976,7 +3954,7 @@ class StereoUtilsApp:
         except ValueError:
             messagebox.showerror("Error", "Must be a number.")
             return
-        for i in self._magic_pick([f"{spec:<16} {n:4d} points  ({e})" for e, spec, n in exps]):
+        for i in self._pick_sample("MagIC K-T", [f"{spec}  -  {n} points  ({e})" for e, spec, n in exps]):
             exp_name, spec, _ = exps[i]
             exp, col = mrv.kt_experiment(data, exp_name)
             if col is None:
@@ -3998,13 +3976,14 @@ class StereoUtilsApp:
         data = self._magic_rockmag_load("hysteresis")
         if data is None:
             return
-        specs = mrv.hyst_specimens(data)
+        specs = sorted(mrv.hyst_specimens(data), key=lambda h: h.specimen)
         if not specs:
             messagebox.showwarning("No hysteresis data", "No LP-HYS or LP-IRM-DCD experiment in this file.")
             return
-        labels = [f"{h.specimen:<18} {'loop' if h.loop_experiment else '    '} "
-                  f"{'DCD' if h.dcd_experiment else ''}" for h in specs]
-        for i in self._magic_pick(labels):
+        labels = [f"{h.specimen}  -  " + " + ".join(
+            name for name, exp in (("loop", h.loop_experiment), ("DCD", h.dcd_experiment)) if exp)
+            for h in specs]
+        for i in self._pick_sample("MagIC hysteresis", labels):
             self.clear_screen()
             try:
                 res = mrv.build_magic_hyst_figure(self.fig, data, specs[i])
