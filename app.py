@@ -31,6 +31,7 @@ import sys
 import tempfile
 import tkinter as tk
 import traceback
+import pathlib
 import webbrowser
 from tkinter import ttk, filedialog, messagebox
 
@@ -622,7 +623,9 @@ class StereoUtilsApp:
         if not os.path.exists(guide_path):
             messagebox.showerror("Error", f"User guide not found:\n{guide_path}")
             return
-        url = f"file://{guide_path}"
+        # as_uri() : file:///... avec espaces/accents encodes et chemins Windows
+        # (C:\...) corrects - un simple f"file://{chemin}" echouait selon le systeme
+        url = pathlib.Path(guide_path).resolve().as_uri()
         if self._help_anchor:
             url += f"#{self._help_anchor}"
         webbrowser.open(url)
