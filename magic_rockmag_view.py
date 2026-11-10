@@ -308,18 +308,35 @@ def day_plot_values(data: MagicRockmag) -> Tuple[np.ndarray, np.ndarray, List[st
 
 
 def build_magic_day_figure(fig, data: MagicRockmag, xmax: Optional[float] = None) -> int:
+    """Day plot de la table specimens d'une contribution MagIC (voir
+    build_day_figure). Retourne le nombre de specimens."""
+    x, y, _names = day_plot_values(data)
+    return build_day_figure(fig, x, y, xmax)
+
+
+_GROUP_MARKERS = ["s", "o", "^", "D", "v", "P", "X", "<", ">", "h"]
+_GROUP_COLORS = ["tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple",
+                 "tab:brown", "tab:pink", "tab:olive", "tab:cyan", "tab:gray"]
+
+
+def build_day_figure(fig, x, y, xmax: Optional[float] = None, groups: Optional[List[str]] = None,
+                     names: Optional[List[str]] = None, title: str = "") -> int:
     """Day plot de rockmag.plot_day (PmagPy) : log-log, Bcr/Bc 1-100,
     limites SD/PSD/MD, pente MD, courbes de melange SP-SD et SD-MD -
     remplace pmagplotlib.plot_day (axe fige a 0-6, voir PmagPy#802 qui
     propose de retirer les anciennes fonctions de ipmag), demande
     explicite utilisateur. rockmag.plot_day ne prend que Mr/Ms/Bcr/Bc :
-    les rapports sont passes avec Ms = Bc = 1 (colonnes MagIC variables,
-    voir day_plot_values). La figure pyplot est recopiee dans `fig`.
-    `xmax` : borne de l'axe Bcr/Bc (None = 100, celle de PmagPy).
-    Retourne le nombre de specimens."""
+    les rapports sont passes avec Ms = Bc = 1. La figure pyplot est
+    recopiee dans `fig` (sans ses points : ils sont retraces ici, un
+    symbole par groupe si `groups` est donne - p.ex. la lithologie d'un
+    tableau de parametres, demande explicite utilisateur "un menu
+    Hysteresis pour juste le Day Plot"). `names` : points cliquables
+    (kind "day_point"). `xmax` : borne de l'axe Bcr/Bc (None = 100).
+    Retourne le nombre de points."""
     import matplotlib.pyplot as plt
     from pmagpy import rockmag
-    x, y, names = day_plot_values(data)
+    x = np.asarray(x, float)
+    y = np.asarray(y, float)
     fig.clf()
     ax = fig.add_subplot(111)
     with warnings.catch_warnings():
@@ -341,11 +358,6 @@ def build_magic_day_figure(fig, data: MagicRockmag, xmax: Optional[float] = None
                 continue
             ax.plot(ln.get_xdata(), ln.get_ydata(), ls=ln.get_linestyle(), color=ln.get_color(),
                     lw=ln.get_linewidth(), label=ln.get_label())
-        for col in src.collections:
-            off = col.get_offsets()
-            if len(off):
-                ax.scatter(off[:, 0], off[:, 1], s=14, marker="s", color="tab:blue",
-                           label=col.get_label(), zorder=3)
         for t in src.texts:
             ax.text(*t.get_position(), t.get_text(), fontsize=8, color=t.get_color())
         ax.set_xlim(src.get_xlim()[0], xmax if xmax else src.get_xlim()[1])
@@ -356,12 +368,28 @@ def build_magic_day_figure(fig, data: MagicRockmag, xmax: Optional[float] = None
         ax.set_ylim(src.get_ylim())
     finally:
         plt.close(src_fig)
+    if groups is None:
+        ax.scatter(x, y, s=14, marker="s", color="tab:blue", label="specimens", zorder=3)
+    else:
+        order = list(dict.fromkeys(groups))
+        g = np.asarray(groups, dtype=object)
+        for k, name in enumerate(order):
+            m = g == name
+            ax.scatter(x[m], y[m], s=22, marker=_GROUP_MARKERS[k % len(_GROUP_MARKERS)],
+                       color=_GROUP_COLORS[k % len(_GROUP_COLORS)], edgecolors="black",
+                       linewidths=0.4, label=f"{name} ({int(m.sum())})", zorder=3)
+    if names is not None and len(x):
+        art = ax.scatter(x, y, s=60, alpha=0, picker=True, zorder=1000)
+        art._su_pick_kind = "day_point"
+        art._su_pick_data = [f"{nm}  Bcr/Bc {a:.3f}  Mr/Ms {b:.4f}"
+                                  + (f"  ({groups[i]})" if groups is not None else "")
+                                  for i, (nm, a, b) in enumerate(zip(names, x, y))]
     lo, hi = ax.get_xlim()
     ylo, yhi = ax.get_ylim()
     off = int(np.sum((x > hi) | (x < lo) | (y < ylo) | (y > yhi)))
     ax.set_xlabel("Bcr/Bc", fontsize=8)
     ax.set_ylabel("Mr/Ms", fontsize=8)
-    ax.set_title(f"Day plot (PmagPy rockmag) - {len(x)} specimens"
+    ax.set_title((title or "Day plot (PmagPy rockmag)") + f" - {len(x)} specimens"
                  + (f", {off} off scale" if off else ""), fontsize=9)
     ax.tick_params(labelsize=7)
     ax.legend(fontsize=6, loc="lower left")

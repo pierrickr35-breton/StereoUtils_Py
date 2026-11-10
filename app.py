@@ -57,6 +57,7 @@ from curie_kt import (
 )
 from kt_magic import export_kt_magic, read_curie_temps
 from hyst_magic import export_hyst_magic, read_mass_table
+from day_table import read_day_table
 import magic_rockmag_view as mrv
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
@@ -943,6 +944,9 @@ class StereoUtilsApp:
         hyst_menu.add_checkbutton(
             label=self._labeled("Normalize Plot", "hystnorm"),
             variable=self.hyst_normalize, command=self._menu_cmd("hysteresis", self.hyst_refresh_plot))
+        hyst_menu.add_separator()
+        hyst_menu.add_command(
+            label="Day Plot from Parameter Table...", command=self._menu_cmd("hysteresis", self.hyst_day_plot_table))
         hyst_menu.add_separator()
         hyst_menu.add_command(
             label="Export AGM Lists to MagIC...", command=self._menu_cmd("hysteresis", self.hyst_export_magic))
@@ -3996,6 +4000,64 @@ class StereoUtilsApp:
             self._redraw_canvas()
             self._afficher(mrv.format_magic_hyst(data, specs[i], res))
 
+    def _day_plot_xmax(self, x):
+        """Borne de l'axe Bcr/Bc : 100 (PmagPy), demandee si des points
+        sont au-dela. None = annule."""
+        if not len(x) or x.max() <= 100.0:
+            return 100.0
+        s = self._console_input(
+            f"{int((x > 100.0).sum())} specimen(s) beyond Bcr/Bc = 100 (max {x.max():.1f}). "
+            f"Bcr/Bc axis maximum (100 = PmagPy default): ", "100")
+        if s is None:
+            return None
+        try:
+            xmax = float(s)
+        except ValueError:
+            messagebox.showerror("Error", "Must be a number.")
+            return None
+        if xmax <= 1.0:
+            messagebox.showerror("Error", "Must be greater than 1.")
+            return None
+        return xmax
+
+    def hyst_day_plot_table(self):
+        """Day plot seul depuis un tableau texte de parametres d'hysteresis
+        (voir day_table.read_day_table) - demande explicite utilisateur
+        ("un menu Hysteresis pour juste le Day Plot", exemple
+        parametros_DayPlot.txt). Un symbole par groupe (lithologie...),
+        points cliquables."""
+        path = filedialog.askopenfilename(
+            title="Hysteresis parameter table (Mr/Ms and Bcr/Bc, or Mr, Ms, Bc, Bcr)",
+            filetypes=[("Text", "*.txt *.csv *.tsv *.dat"), ("All files", "*.*")])
+        if not path:
+            return
+        try:
+            tab = read_day_table(path)
+        except Exception as e:
+            messagebox.showerror("Error", f"{os.path.basename(path)}:\n{e}")
+            return
+        if not tab.names:
+            messagebox.showerror("Error", "No line with valid Mr/Ms and Bcr/Bc values.")
+            return
+        xmax = self._day_plot_xmax(tab.bcr_bc)
+        if xmax is None:
+            return
+        self.clear_screen()
+        n = mrv.build_day_figure(self.fig, tab.bcr_bc, tab.mr_ms, xmax, groups=tab.groups,
+                                 names=tab.names, title=f"Day plot - {os.path.basename(path)}")
+        self._redraw_canvas()
+        lines = [f"Day plot (PmagPy rockmag.plot_day) - {path}",
+                 f"  {n} samples, {tab.source}"
+                 + (f"; symbols by column '{tab.group_column}'" if tab.groups is not None else "")]
+        if tab.skipped:
+            lines.append(f"  {len(tab.skipped)} line(s) without valid ratios skipped: {', '.join(tab.skipped)}")
+        lines += [f"  WARNING: {w}" for w in tab.warnings]
+        for i, (nm, a, b) in enumerate(zip(tab.names, tab.bcr_bc, tab.mr_ms)):
+            grp = f"  {tab.groups[i]}" if tab.groups is not None else ""
+            lines.append(f"  {nm:<18} Bcr/Bc {a:7.3f}  Mr/Ms {b:6.4f}{grp}")
+        lines.append("  (click a point to identify it)")
+        self._afficher("\n".join(lines) + "\n")
+
     def hyst_magic_day_plot(self):
         """Day plot de rockmag.plot_day (PmagPy) sur la table specimens de
         la contribution MagIC."""
@@ -4003,21 +4065,9 @@ class StereoUtilsApp:
         if data is None:
             return
         x, y, names = mrv.day_plot_values(data)
-        xmax = 100.0
-        if len(x) and x.max() > 100.0:
-            s = self._console_input(
-                f"{int((x > 100.0).sum())} specimen(s) beyond Bcr/Bc = 100 (max {x.max():.1f}). "
-                f"Bcr/Bc axis maximum (100 = PmagPy default): ", "100")
-            if s is None:
-                return
-            try:
-                xmax = float(s)
-            except ValueError:
-                messagebox.showerror("Error", "Must be a number.")
-                return
-            if xmax <= 1.0:
-                messagebox.showerror("Error", "Must be greater than 1.")
-                return
+        xmax = self._day_plot_xmax(x)
+        if xmax is None:
+            return
         self.clear_screen()
         n = mrv.build_magic_day_figure(self.fig, data, xmax)
         self._redraw_canvas()
@@ -4054,6 +4104,12 @@ class StereoUtilsApp:
         kind = getattr(event.artist, "_su_pick_kind", None)
         if kind == "hyst_xaxis":
             self._prompt_hyst_max_field()
+        elif kind == "day_point":
+            # points du Day plot (voir magic_rockmag_view.build_day_figure)
+            data = getattr(event.artist, "_su_pick_data", [])
+            for i in getattr(event, "ind", [])[:5]:
+                if 0 <= i < len(data):
+                    self._afficher(f"[Day plot] {data[i]}\n")
 
     def _prompt_hyst_max_field(self):
         """Invite pour changer la borne X (champ max, Tesla) du
