@@ -320,7 +320,8 @@ _GROUP_COLORS = ["tab:blue", "tab:red", "tab:green", "tab:orange", "tab:purple",
 
 
 def build_day_figure(fig, x, y, xmax: Optional[float] = None, groups: Optional[List[str]] = None,
-                     names: Optional[List[str]] = None, title: str = "") -> int:
+                     names: Optional[List[str]] = None, title: str = "",
+                     xmin: Optional[float] = None) -> int:
     """Day plot de rockmag.plot_day (PmagPy) : log-log, Bcr/Bc 1-100,
     limites SD/PSD/MD, pente MD, courbes de melange SP-SD et SD-MD -
     remplace pmagplotlib.plot_day (axe fige a 0-6, voir PmagPy#802 qui
@@ -359,12 +360,12 @@ def build_day_figure(fig, x, y, xmax: Optional[float] = None, groups: Optional[L
             ax.plot(ln.get_xdata(), ln.get_ydata(), ls=ln.get_linestyle(), color=ln.get_color(),
                     lw=ln.get_linewidth(), label=ln.get_label())
         for t in src.texts:
-            ax.text(*t.get_position(), t.get_text(), fontsize=8, color=t.get_color())
-        ax.set_xlim(src.get_xlim()[0], xmax if xmax else src.get_xlim()[1])
+            ax.text(*t.get_position(), t.get_text(), fontsize=8, color=t.get_color(), clip_on=True)
+        ax.set_xlim(xmin if xmin else src.get_xlim()[0], xmax if xmax else src.get_xlim()[1])
         ax.set_ylim(src.get_ylim())
         ax.set_xticks(src.get_xticks(), [t.get_text() for t in src.get_xticklabels()])
         ax.set_yticks(src.get_yticks(), [t.get_text() for t in src.get_yticklabels()])
-        ax.set_xlim(src.get_xlim()[0], xmax if xmax else src.get_xlim()[1])
+        ax.set_xlim(xmin if xmin else src.get_xlim()[0], xmax if xmax else src.get_xlim()[1])
         ax.set_ylim(src.get_ylim())
     finally:
         plt.close(src_fig)
@@ -385,9 +386,24 @@ def build_day_figure(fig, x, y, xmax: Optional[float] = None, groups: Optional[L
                                   + (f"  ({groups[i]})" if groups is not None else "")
                                   for i, (nm, a, b) in enumerate(zip(names, x, y))]
     lo, hi = ax.get_xlim()
+    if xmin or (xmax and xmax != 100.0):
+        # graduations lisibles quelle que soit la plage (zoom) : valeurs
+        # "rondes" dans [lo, hi], sans les 3x10^0 des graduations mineures
+        from matplotlib.ticker import NullFormatter
+        nice = [v for v in (1, 1.5, 2, 3, 4, 5, 7, 10, 15, 20, 30, 50, 70, 100, 200, 500, 1000)
+                if lo <= v <= hi]
+        if len(nice) >= 2:
+            ax.set_xticks(nice, [f"{v:g}" for v in nice])
+        ax.xaxis.set_minor_formatter(NullFormatter())
+        ax.set_xlim(lo, hi)
     ylo, yhi = ax.get_ylim()
     off = int(np.sum((x > hi) | (x < lo) | (y < ylo) | (y > yhi)))
-    ax.set_xlabel("Bcr/Bc", fontsize=8)
+    # clic sur l'axe X -> bornes Bcr/Bc (zoom) - demande explicite
+    # utilisateur ("est-ce possible de cliquer sur l'axe X pour zoomer"),
+    # meme mecanisme que l'axe X du graphique Hysteresis
+    ax.xaxis.set_picker(True)
+    ax.xaxis._su_pick_kind = "day_xaxis"
+    ax.set_xlabel("Bcr/Bc  (click the axis to zoom)", fontsize=8)
     ax.set_ylabel("Mr/Ms", fontsize=8)
     ax.set_title((title or "Day plot (PmagPy rockmag)") + f" - {len(x)} specimens"
                  + (f", {off} off scale" if off else ""), fontsize=9)

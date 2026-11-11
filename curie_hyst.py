@@ -375,6 +375,13 @@ class HysteresisResult:
     moment_norm_corrected: np.ndarray
     backfield_field: np.ndarray
     backfield_norm: np.ndarray
+    # VFTB avec courbe de remanence (.coe) mesuree sur une AUTRE poudre
+    # (voir attach_vftb_backfield) : Mr pris dans la boucle, Mrs du .coe
+    # garde pour comparaison.
+    backfield_path: str = ""
+    backfield_mass_mg: float = float("nan")
+    mrs_backfield: float = float("nan")
+    mr_loop: float = float("nan")
 
 
 def _ols(x: np.ndarray, y: np.ndarray) -> Tuple[float, float]:
@@ -393,6 +400,80 @@ def _last_sign_change(arr: np.ndarray, lo: int, hi: int) -> Optional[int]:
         if np.sign(arr[i]) != np.sign(arr[i + 1]):
             idx = i
     return idx
+
+
+# ----------------------------------------------------------------------
+# VFTB : courbe de remanence/backfield dans un fichier .coe SEPARE, mesuree
+# sur une autre poudre de masse differente - demande explicite utilisateur
+# ("the backfield was done on a different powder with a different mass"),
+# dossier Hysteresis_Roberto : 24WH0205_277mg_RGV.hys + 24WH0205_261mg_RGV.coe.
+# Les deux fichiers sont deja en emu/g (chacun normalise par SA masse par le
+# logiciel VFTB) : le .coe est remis a l'echelle de la masse de la boucle
+# pour que compute_hysteresis (qui divise par la masse de la boucle) le
+# retrouve en Am2/kg. Hcr (passage par zero) ne depend pas de la masse. Mr
+# est pris dans la BOUCLE (meme poudre que Ms) : sur ce dossier Mrs(.coe) /
+# Mr(boucle) va de 1.01 a 1.39 - Mr/Ms ne melange donc pas deux poudres.
+# ----------------------------------------------------------------------
+
+def vftb_sample_key(path: str) -> str:
+    """'24WH0205_277mg_RGV.hys' -> '24wh0205' (nom avant '_<masse>mg')."""
+    base = os.path.splitext(os.path.basename(path))[0]
+    m = re.match(r"(.+?)_\d+(?:[.,]\d+)?\s*mg", base, re.IGNORECASE)
+    return (m.group(1) if m else base).lower()
+
+
+def find_vftb_backfield(hys_path: str) -> Optional[str]:
+    """Fichier .coe du meme echantillon (meme cle, masse quelconque) dans le
+    dossier du .hys ; None si absent ou ambigu (plusieurs .coe)."""
+    key = vftb_sample_key(hys_path)
+    folder = os.path.dirname(os.path.abspath(hys_path))
+    found = [os.path.join(folder, f) for f in sorted(os.listdir(folder))
+             if f.lower().endswith(".coe") and vftb_sample_key(f) == key]
+    return found[0] if len(found) == 1 else None
+
+
+def read_vftb_backfield(coe_path: str, loop_mass_mg: float) -> Tuple[Optional[HystLoop], Optional[float]]:
+    """(courbe .coe remise a l'echelle de la masse de la boucle, masse du
+    .coe en mg). Courbe None si le fichier n'a pas de bloc lisible."""
+    _name, coe_mass, loops = read_vftb_file(coe_path)
+    if not loops or not len(loops[0].field):
+        return None, coe_mass
+    bf = loops[0]
+    if coe_mass:
+        bf.moment = bf.moment * (loop_mass_mg / coe_mass)   # Am2(coe) -> Am2 a la masse de la boucle
+    else:
+        bf.moment = bf.moment * loop_mass_mg * 1.0e-6        # laisse en emu/g par read_vftb_file
+    return bf, coe_mass
+
+
+def loop_remanence(res: "HysteresisResult") -> float:
+    """Mr de la boucle : moyenne des |M(H=0)| des branches descendante et
+    montante (interpolation lineaire, Am2/kg) - la moyenne annule un
+    decalage du champ ou de l'aimantation."""
+    x, y = res.field, res.moment_norm_corrected
+    n = len(x)
+    if n < 4:
+        return float("nan")
+    imin = int(np.argmin(x))
+    vals = []
+    for a, b in ((0, imin), (imin, n - 1)):
+        xs, ys = x[a:b + 1], y[a:b + 1]
+        if len(xs) < 2 or xs.min() > 0 or xs.max() < 0:
+            return float("nan")
+        o = np.argsort(xs)
+        vals.append(abs(float(np.interp(0.0, xs[o], ys[o]))))
+    return float(np.mean(vals))
+
+
+def attach_vftb_backfield(res: "HysteresisResult", coe_path: str, coe_mass_mg: Optional[float]) -> None:
+    """Complete un resultat calcule avec un .coe separe : Mr et Mr/Ms pris
+    dans la boucle, Mrs du .coe garde a part (mrs_backfield)."""
+    res.backfield_path = coe_path
+    res.backfield_mass_mg = coe_mass_mg if coe_mass_mg else float("nan")
+    res.mrs_backfield = res.jrs
+    res.mr_loop = loop_remanence(res)
+    res.jrs = res.mr_loop
+    res.jrs_over_jsferro = res.jrs / res.js_ferro if res.js_ferro else float("nan")
 
 
 def compute_hysteresis(
@@ -493,7 +574,12 @@ def format_hysteresis_result(res: HysteresisResult) -> str:
         f" Hcr        : {res.hcr_mt:.4g} mT\n"
         f" Jrs/Js_ferro: {res.jrs_over_jsferro:.4g}   Hcr/Hc: {res.hcr_over_hc:.4g}\n"
         f" susceptibilite paramagnetique+diamagnetique: {res.susc_para_si:.4g} m3/kg\n"
-    )
+    ) + (
+        f" Backfield  : {os.path.basename(res.backfield_path)} ({res.backfield_mass_mg:g} mg, "
+        f"other powder) - Hcr from it; Remanence = Mr of the loop\n"
+        f" Mrs backfield: {res.mrs_backfield:.5g} Am2/kg   Mrs backfield / Mr loop: "
+        f"{res.mrs_backfield / res.mr_loop:.3g}\n"
+        if res.backfield_path else "")
 
 
 # ----------------------------------------------------------------------

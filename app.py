@@ -35,6 +35,7 @@ import pathlib
 import webbrowser
 from tkinter import ttk, filedialog, messagebox
 
+import numpy as np
 from matplotlib import image as mpimg
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -56,13 +57,18 @@ from curie_kt import (
     curie_point_second_derivative, build_kt_figure,
 )
 from kt_magic import export_kt_magic, read_curie_temps
-from hyst_magic import export_hyst_magic, read_mass_table
+from hyst_magic import (
+    export_hyst_magic, read_mass_table, collect_agm_items, collect_vsm_items, collect_vftb_items,
+    write_correspondence_template, read_correspondence_table, DEFAULT_INSTRUMENT,
+)
+from kt_magic import read_prmag_samples
 from day_table import read_day_table
 import magic_rockmag_view as mrv
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
     vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
     build_hysteresis_figure, pmagpy_hysteresis_crosscheck, format_pmagpy_hysteresis,
+    find_vftb_backfield, read_vftb_backfield, attach_vftb_backfield, vftb_sample_key,
 )
 from site_map import read_prmag_sites, write_kml, write_gmt_map_script, build_site_map_figure
 
@@ -938,6 +944,8 @@ class StereoUtilsApp:
         hyst_menu.add_separator()
         hyst_menu.add_command(
             label="Open VFTB File...", command=self._menu_cmd("hysteresis", self.hyst_open_vftb_file))
+        hyst_menu.add_command(
+            label="Process VFTB Folder (.hys + .coe)...", command=self._menu_cmd("hysteresis", self.hyst_vftb_folder))
         hyst_menu.add_separator()
         hyst_menu.add_command(
             label="Paramagnetic Fit Threshold...", command=self._menu_cmd("hysteresis", self.hyst_set_valsat))
@@ -949,7 +957,7 @@ class StereoUtilsApp:
             label="Day Plot from Parameter Table...", command=self._menu_cmd("hysteresis", self.hyst_day_plot_table))
         hyst_menu.add_separator()
         hyst_menu.add_command(
-            label="Export AGM Lists to MagIC...", command=self._menu_cmd("hysteresis", self.hyst_export_magic))
+            label="Export Hysteresis to MagIC (AGM, VSM, VFTB)...", command=self._menu_cmd("hysteresis", self.hyst_export_magic))
         hyst_menu.add_separator()
         hyst_menu.add_command(
             label="Read MagIC Contribution (PmagPy)...", command=self._menu_cmd("hysteresis", self.hyst_read_magic))
@@ -3738,32 +3746,95 @@ class StereoUtilsApp:
         self.hyst_refresh_plot()
 
     def hyst_export_magic(self):
-        """Une ou plusieurs listes AGM -> fichier MagIC (specimens +
-        measurements), meme calcul que Select Sample to Plot... avec le
-        seuil paramagnetique courant - voir hyst_magic.py. Le(s) .prmag
-        de l'etude rattache(nt) les noms de fichier sans prefixe d'annee
-        (cb0105 -> 13CB0105) et restreignent l'export a l'etude ; la
-        table de pesees (optionnelle, "nom ... masse_mg") remplace les
-        masses provisoires des listes."""
-        lists = filedialog.askopenfilenames(
-            title="AGM sample list(s)", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
-        if not lists:
+        """AGM (listes), VSM (listes) ou VFTB (dossier .hys/.coe) -> fichier
+        MagIC (specimens + measurements), meme calcul que l'affichage avec
+        le seuil paramagnetique courant - voir hyst_magic.py. Le lien
+        fichier -> specimen -> echantillon du .prmag est une TABLE DE
+        CORRESPONDANCE editee par l'utilisateur (demande explicite :
+        "une liste nom_fichier nom_specimen et nom_sample, nom_sample etant
+        obligatoirement un sample d'un .prmag") ; sans table, le programme
+        en ecrit une pre-remplie par les regles automatiques."""
+        kind = self._console_input(
+            "Hysteresis data to export: 1 = AGM sample list(s), 2 = VSM sample list(s), "
+            "3 = VFTB folder (.hys + .coe) [1]: ", "1")
+        if kind is None:
+            return
+        kind = {"1": "AGM", "2": "VSM", "3": "VFTB"}.get(kind.strip() or "1")
+        if kind is None:
+            messagebox.showerror("Error", "Answer 1, 2 or 3.")
+            return
+        report = []
+        if kind == "VFTB":
+            folder = filedialog.askdirectory(title="Folder with VFTB .hys (and .coe) files")
+            if not folder:
+                return
+            items = collect_vftb_items(folder, report)
+            data_dir = folder
+        else:
+            lists = filedialog.askopenfilenames(
+                title=f"{kind} sample list(s)", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+            if not lists:
+                return
+            items = (collect_agm_items if kind == "AGM" else collect_vsm_items)(list(lists), report)
+            data_dir = os.path.dirname(lists[0])
+        if not items:
+            messagebox.showerror("Error", "No measurement file found.\n" + "\n".join(report))
             return
         prmags = filedialog.askopenfilenames(
             title="Paleomag .prmag of the study",
             filetypes=[("STARpaleomag data", "*.prmag"), ("All files", "*.*")])
         if not prmags:
             return
-        mass_table = None
-        ans = self._console_input("Weighing table with the masses (name ... mass_mg)? y/N: ", "N")
+        ans = self._console_input(
+            "Correspondence table file -> specimen -> sample: (o)pen an existing table, "
+            "or (c)reate one pre-filled from the file names [c]: ", "c")
         if ans is None:
             return
-        if ans.strip().lower() == "y":
-            mpath = filedialog.askopenfilename(
-                title="Weighing table", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
-            if mpath:
-                mass_table = read_mass_table(mpath)
-        instrument = self._console_input("Instrument: ", "Princeton MicroMag AGM 2900")
+        if ans.strip().lower().startswith("o"):
+            tpath = filedialog.askopenfilename(
+                title="Correspondence table (file, specimen, sample [, mass_mg])", initialdir=data_dir,
+                filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+            if not tpath:
+                return
+        else:
+            tpath = filedialog.asksaveasfilename(
+                title="Save the pre-filled correspondence table", initialdir=data_dir,
+                initialfile=f"{kind}_MagIC_correspondence.txt", defaultextension=".txt",
+                filetypes=[("Text", "*.txt")])
+            if not tpath:
+                return
+            samples = {}
+            for p in prmags:
+                samples.update(read_prmag_samples(p))
+            n_ok, n_bad = write_correspondence_template(tpath, items, samples)
+            self._afficher(
+                f"Correspondence table written: {tpath}\n"
+                f"  {n_ok} line(s) matched automatically, {n_bad} line(s) with '?' (no sample of the .prmag found).\n"
+                "  Columns: file, specimen, sample (must be a sample of the .prmag), mass_mg (optional),\n"
+                "  note (ignored). Check it, replace each '?' or delete the line to leave a file out.\n")
+            if n_bad:
+                self._afficher("  Edit the table, then run the export again and choose (o)pen.\n")
+                return
+            go = self._console_input("All files matched. Export now with this table (not edited)? y/N: ", "N")
+            if go is None or go.strip().lower() != "y":
+                self._afficher("  Edit the table if needed, then run the export again and choose (o)pen.\n")
+                return
+        try:
+            table = read_correspondence_table(tpath)
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", str(e))
+            return
+        mass_table = None
+        if kind == "AGM":
+            ans = self._console_input("Weighing table with the masses (name ... mass_mg)? y/N: ", "N")
+            if ans is None:
+                return
+            if ans.strip().lower() == "y":
+                mpath = filedialog.askopenfilename(
+                    title="Weighing table", filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+                if mpath:
+                    mass_table = read_mass_table(mpath)
+        instrument = self._console_input("Instrument: ", DEFAULT_INSTRUMENT[kind])
         if instrument is None:
             return
         analysts = self._console_input("Analysts' names (separated by ':'): ", "")
@@ -3778,14 +3849,15 @@ class StereoUtilsApp:
             return
         try:
             result = export_hyst_magic(
-                list(lists), out_path, list(prmags), mass_table, self.hyst_valsat_frac,
-                instrument=instrument.strip(), analysts=analysts.strip())
+                items, out_path, list(prmags), table, mass_table, self.hyst_valsat_frac,
+                instrument=instrument.strip(), analysts=analysts.strip(), report=report)
         except (OSError, ValueError) as e:
-            messagebox.showerror("Error", f"MagIC export failed:\n{e}")
+            messagebox.showerror("Error", f"MagIC export failed (nothing written):\n{e}")
             return
         n_par = sum(1 for r in result.specimens if r.get("hyst_bc"))
         n_mass = sum(1 for r in result.specimens if r.get("weight"))
-        msg = (f"MagIC hysteresis export: {len(result.specimens)} specimen(s) "
+        msg = (f"MagIC hysteresis export ({kind}, table {os.path.basename(tpath)}): "
+               f"{len(result.specimens)} specimen(s) "
                f"({n_par} with parameters, {n_mass} with a mass), "
                f"{len(result.measurements)} measurement(s), paramagnetic threshold "
                f"{self.hyst_valsat_frac:g} -> {out_path}\n")
@@ -3856,7 +3928,18 @@ class StereoUtilsApp:
 
         loop = loops[0]
         backfield = loops[1] if len(loops) > 1 else None
+        # backfield dans un .coe separe (autre poudre, autre masse) - voir
+        # curie_hyst.attach_vftb_backfield
+        coe_path = coe_mass = None
+        if backfield is None:
+            coe_path = find_vftb_backfield(path)
+            if coe_path:
+                backfield, coe_mass = read_vftb_backfield(coe_path, mass_mg)
+                if backfield is None:
+                    coe_path = None
         res = compute_hysteresis(loop, backfield, mass_mg, valsat_frac=self.hyst_valsat_frac)
+        if res is not None and coe_path:
+            attach_vftb_backfield(res, coe_path, coe_mass)
         if res is None:
             messagebox.showerror(
                 "Error",
@@ -3877,6 +3960,88 @@ class StereoUtilsApp:
     # Stereo_Utils pour lire les donnees de rockmag (KT et Hysteresis)
     # des contributions Magic").
     # ------------------------------------------------------------------
+
+    def hyst_vftb_folder(self):
+        """Traite tous les .hys VFTB d'un dossier, chacun avec le .coe du
+        meme echantillon (autre poudre, autre masse - voir
+        curie_hyst.attach_vftb_backfield) - demande explicite utilisateur
+        (dossier Hysteresis_Roberto, "the backfield was done on a different
+        powder with a different mass"). Ecrit un tableau de parametres
+        (relisible par Day Plot from Parameter Table) et trace le Day plot."""
+        folder = filedialog.askdirectory(title="Folder with VFTB .hys (and .coe) files")
+        if not folder:
+            return
+        hys = sorted(f for f in os.listdir(folder) if f.lower().endswith(".hys"))
+        if not hys:
+            messagebox.showerror("Error", "No .hys file in this folder.")
+            return
+        out = filedialog.asksaveasfilename(
+            title="Save the parameter table", initialdir=folder,
+            initialfile="VFTB_hysteresis_parameters.txt", defaultextension=".txt",
+            filetypes=[("Text", "*.txt")])
+        if not out:
+            return
+        nan = float("nan")
+        header = ["Sample", "Mass_hys_mg", "Mass_coe_mg", "Js_ferro_Am2/kg", "Mr_Am2/kg",
+                  "Mrs_coe_Am2/kg", "Mrs_coe/Mr", "Hc_mT", "Hcr_mT", "Mr/Ms", "Hcr/Hc",
+                  "chi_para_m3/kg", "hys_file", "coe_file"]
+        rows, names, x, y, notes = [], [], [], [], []
+        for f in hys:
+            path = os.path.join(folder, f)
+            try:
+                name, mass_mg, loops = read_vftb_file(path)
+            except OSError as e:
+                notes.append(f"{f}: {e}")
+                continue
+            if not loops or not mass_mg:
+                notes.append(f"{f}: no data block or no mass in the header - skipped")
+                continue
+            coe_path = find_vftb_backfield(path)
+            bf = coe_mass = None
+            if coe_path:
+                bf, coe_mass = read_vftb_backfield(coe_path, mass_mg)
+            res = compute_hysteresis(loops[0], bf, mass_mg, valsat_frac=self.hyst_valsat_frac)
+            if res is None:
+                notes.append(f"{f}: parameters could not be computed - skipped")
+                continue
+            sample = vftb_sample_key(path).upper()
+            if bf is not None:
+                attach_vftb_backfield(res, coe_path, coe_mass)
+            else:
+                notes.append(f"{sample}: no .coe file - no Hcr, not in the Day plot")
+            ratio = res.mrs_backfield / res.mr_loop if res.backfield_path and res.mr_loop else nan
+            vals = [res.js_ferro, res.jrs, res.mrs_backfield, ratio, res.hc_mt, res.hcr_mt,
+                    res.jrs_over_jsferro, res.hcr_over_hc, res.susc_para_si]
+            rows.append([sample, f"{mass_mg:g}", f"{coe_mass:g}" if coe_mass else "",
+                         *[("" if not np.isfinite(v) else f"{v:.5g}") for v in vals],
+                         f, os.path.basename(coe_path) if bf is not None else ""])
+            ok = (bf is not None and res.js_ferro > 0 and res.hc_mt > 0 and res.hcr_mt > 0
+                  and np.isfinite(res.jrs_over_jsferro) and res.jrs_over_jsferro > 0)
+            if ok:
+                names.append(sample)
+                x.append(res.hcr_over_hc)
+                y.append(res.jrs_over_jsferro)
+            elif bf is not None:
+                notes.append(f"{sample}: unphysical parameters (Ms, Hc or Hcr <= 0) - not in the Day plot")
+        with open(out, "w", encoding="utf-8") as fh:
+            fh.write("\t".join(header) + "\n")
+            for r in rows:
+                fh.write("\t".join(r) + "\n")
+        lines = [f"VFTB folder {folder}: {len(rows)} sample(s) processed, table written to {out}",
+                 "  Ms (Js_ferro), Mr and Hc from the loop (.hys); Hcr from the backfield (.coe, other powder:",
+                 "  its curve, already in emu/g, is used at the loop mass). Mr/Ms uses the loop Mr only;",
+                 "  Mrs_coe/Mr compares the two powders.",
+                 f"  {'Sample':<10}{'Ms':>11}{'Mr':>11}{'Mrs_coe':>11}{'ratio':>7}{'Hc':>7}{'Hcr':>7}{'Mr/Ms':>8}{'Hcr/Hc':>8}"]
+        for r in rows:
+            lines.append(f"  {r[0]:<10}{r[3]:>11}{r[4]:>11}{r[5]:>11}{r[6][:5]:>7}{r[7][:5]:>7}{r[8][:5]:>7}"
+                         f"{r[9][:6]:>8}{r[10][:6]:>8}")
+        lines += [f"  NOTE: {n}" for n in notes]
+        if names:
+            self.clear_screen()
+            self._draw_day_plot(np.array(x), np.array(y), 100.0, names=names,
+                                title=f"Day plot - {os.path.basename(folder)}")
+            lines.append("  (click a point of the Day plot to identify it)")
+        self._afficher("\n".join(lines) + "\n")
 
     def _magic_rockmag_load(self, kind):
         """Contribution deja chargee -> proposee a nouveau (meme fichier
@@ -4000,6 +4165,38 @@ class StereoUtilsApp:
             self._redraw_canvas()
             self._afficher(mrv.format_magic_hyst(data, specs[i], res))
 
+    def _draw_day_plot(self, x, y, xmax=None, xmin=None, **kw):
+        """Trace le Day plot et garde ses donnees pour le zoom par clic sur
+        l'axe X (voir _prompt_day_xrange)."""
+        self._day_state = dict(x=x, y=y, xmax=xmax, xmin=xmin, kw=kw)
+        n = mrv.build_day_figure(self.fig, x, y, xmax, xmin=xmin, **kw)
+        self._redraw_canvas()
+        return n
+
+    def _prompt_day_xrange(self):
+        """Bornes de l'axe Bcr/Bc du Day plot courant (clic sur l'axe X)."""
+        st = getattr(self, "_day_state", None)
+        if not st:
+            return
+        lo, hi = self.fig.axes[0].get_xlim() if self.fig.axes else (1.0, 100.0)
+        s = self._console_input("Bcr/Bc axis range: min max (empty = 1 100): ", f"{lo:g} {hi:g}")
+        if s is None:
+            return
+        parts = s.replace(",", " ").split()
+        if not parts:
+            xmin, xmax = None, 100.0
+        else:
+            try:
+                xmin, xmax = (float(parts[0]), float(parts[1])) if len(parts) >= 2 else (None, float(parts[0]))
+            except ValueError:
+                messagebox.showerror("Error", "Enter two numbers: min max.")
+                return
+            if (xmin is not None and xmin <= 0) or xmax <= (xmin or 1.0):
+                messagebox.showerror("Error", "Need 0 < min < max (logarithmic axis).")
+                return
+        self.clear_screen()
+        self._draw_day_plot(st["x"], st["y"], xmax, xmin=xmin, **st["kw"])
+
     def _day_plot_xmax(self, x):
         """Borne de l'axe Bcr/Bc : 100 (PmagPy), demandee si des points
         sont au-dela. None = annule."""
@@ -4043,9 +4240,8 @@ class StereoUtilsApp:
         if xmax is None:
             return
         self.clear_screen()
-        n = mrv.build_day_figure(self.fig, tab.bcr_bc, tab.mr_ms, xmax, groups=tab.groups,
-                                 names=tab.names, title=f"Day plot - {os.path.basename(path)}")
-        self._redraw_canvas()
+        n = self._draw_day_plot(tab.bcr_bc, tab.mr_ms, xmax, groups=tab.groups,
+                                names=tab.names, title=f"Day plot - {os.path.basename(path)}")
         lines = [f"Day plot (PmagPy rockmag.plot_day) - {path}",
                  f"  {n} samples, {tab.source}"
                  + (f"; symbols by column '{tab.group_column}'" if tab.groups is not None else "")]
@@ -4069,8 +4265,7 @@ class StereoUtilsApp:
         if xmax is None:
             return
         self.clear_screen()
-        n = mrv.build_magic_day_figure(self.fig, data, xmax)
-        self._redraw_canvas()
+        n = self._draw_day_plot(x, y, xmax)
         lines = [f"Day plot (PmagPy rockmag.plot_day): {n} specimens with Mr/Ms and Bcr/Bc"]
         lines += [f"  {nm:<18} Bcr/Bc {a:7.3f}  Mr/Ms {b:6.4f}" for nm, a, b in zip(names, x, y)]
         self._afficher("\n".join(lines) + "\n")
@@ -4104,6 +4299,8 @@ class StereoUtilsApp:
         kind = getattr(event.artist, "_su_pick_kind", None)
         if kind == "hyst_xaxis":
             self._prompt_hyst_max_field()
+        elif kind == "day_xaxis":
+            self._prompt_day_xrange()
         elif kind == "day_point":
             # points du Day plot (voir magic_rockmag_view.build_day_figure)
             data = getattr(event.artist, "_su_pick_data", [])
