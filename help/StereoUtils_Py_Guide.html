@@ -490,9 +490,9 @@
 
     <section class="intro" id="history">
       <h2>History and foreword</h2>
-      <p>StereoUtils_Py is a port of <code>Stereo_V19</code> (<code>StereoOSX_x.f95</code> + a family of companion Fortran files — <code>stereograph.f</code>, <code>plotstereo.f95</code>, <code>pmagoutils.f</code>…), a Fortran/Qt5 stereonet and directional-statistics application from the same paleomagnetism laboratory (Géosciences Rennes) as its sibling applications <strong>STARpaleomag_Py</strong> and <strong>AMS_Py</strong>. Where those two process specimen measurements and anisotropy tensors, StereoUtils_Py is the general-purpose <em>directional statistics</em> toolbox: the stereonet itself (Wulff/Schmidt projections, "layers" of directions/means/great circles), the Fisher-family statistical tests, structural (bedding/borehole/fold) corrections, and a large collection of VGP/paleolatitude/rotation utilities that the original Fortran grouped under "Pmag Utilities".</p>
-      <p>One menu, <strong>PmagPy-tools</strong>, is not a port at all: rather than reimplement routines the Fortran itself only <em>shelled out</em> to (writing a file, then invoking a standalone PmagPy command-line script — <code>plot_map_pts.py</code>, <code>incfish.py</code>, <code>foldtest.py</code>…), this port calls the installed <code>pmagpy</code> Python package's own functions directly. Same numerical results, no intermediate files or subprocess.</p>
-      <p>Two more menus, <strong>K-T</strong> and <strong>Hysteresis</strong>, are a port of a <em>different</em> companion Fortran program, <code>Curie_OSX</code> (susceptibility-vs-temperature and hysteresis-loop processing) — plotted directly with matplotlib rather than through the pixel-matched <code>plotlib</code> primitives the rest of the app uses. <strong>Pmag Utilities → Site Map</strong> is new work with no Fortran precedent at all: exporting <code>.prmag</code> site coordinates to KML/GMT/matplotlib maps.</p>
+      <p>StereoUtils_Py is the Python version of <code>Stereo_V19</code>, a Fortran stereonet and directional-statistics application from the same paleomagnetism laboratory (Géosciences Rennes) as its sibling applications <strong>STARpaleomag_Py</strong> and <strong>AMS_Py</strong>. Where those two process specimen measurements and anisotropy tensors, StereoUtils_Py is the general-purpose <em>directional statistics</em> toolbox: the stereonet itself (Wulff/Schmidt projections, "layers" of directions/means/great circles), the Fisher-family statistical tests, structural (bedding/borehole/fold) corrections, and a large collection of VGP/paleolatitude/rotation utilities grouped under "Pmag Utilities".</p>
+      <p>One menu, <strong>PmagPy-tools</strong>, calls the installed <code>pmagpy</code> Python package's own functions directly (the equivalents of PmagPy's <code>plot_map_pts.py</code>, <code>incfish.py</code>, <code>foldtest.py</code>…), with no intermediate files.</p>
+      <p>Two more menus, <strong>K-T</strong> and <strong>Hysteresis</strong>, come from another companion program, <code>Curie_OSX</code> (susceptibility-vs-temperature and hysteresis-loop processing). <strong>Pmag Utilities → Site Map</strong> exports <code>.prmag</code> site coordinates to KML/GMT/matplotlib maps.</p>
       <div class="callout">
         <strong>Open source.</strong> The source code is available on GitHub alongside STARpaleomag_Py and AMS_Py. As with its sibling applications, researchers and students wishing to use or modify this program are encouraged to do so through Claude.
       </div>
@@ -524,7 +524,7 @@
         <li><strong>Retouch</strong><span>Edit symbol/color/info by hand in the project file, reload</span></li>
       </ol>
       <div class="callout">
-        <strong>A handful of keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, most commands here are still menu-only, but the 7 most frequently used ones now have a shortcut: <strong>Hysteresis → Normalize Plot</strong> (<code>Cmd+N</code>/<code>Ctrl+Shift+N</code>, the first one added), <strong>File [D-I]…</strong> (<code>Cmd+O</code>/<code>Ctrl+Shift+O</code>), <strong>Manual [D-I]…</strong> (<code>Cmd+Shift+M</code>/<code>Ctrl+Shift+M</code>), <strong>Plot stereo</strong> (<code>Cmd+P</code>/<code>Ctrl+Shift+P</code>), <strong>Initialize…</strong> (<code>Cmd+I</code>/<code>Ctrl+Shift+I</code>), <strong>List-data</strong> (<code>Cmd+L</code>/<code>Ctrl+Shift+L</code>), and <strong>Statistics → Fisher Statistics…</strong> (<code>Cmd+F</code>/<code>Ctrl+Shift+F</code>, not PmagPy-tools’ own Fisher).
+        <strong>A handful of keyboard shortcuts.</strong> Unlike STARpaleomag_Py/AMS_Py, most commands here are still menu-only, but the 7 most frequently used ones have a shortcut: <strong>Hysteresis → Normalize Plot</strong> (<code>Cmd+N</code>/<code>Ctrl+Shift+N</code>), <strong>File [D-I]…</strong> (<code>Cmd+O</code>/<code>Ctrl+Shift+O</code>), <strong>Manual [D-I]…</strong> (<code>Cmd+Shift+M</code>/<code>Ctrl+Shift+M</code>), <strong>Plot stereo</strong> (<code>Cmd+P</code>/<code>Ctrl+Shift+P</code>), <strong>Initialize…</strong> (<code>Cmd+I</code>/<code>Ctrl+Shift+I</code>), <strong>List-data</strong> (<code>Cmd+L</code>/<code>Ctrl+Shift+L</code>), and <strong>Statistics → Fisher Statistics…</strong> (<code>Cmd+F</code>/<code>Ctrl+Shift+F</code>, not PmagPy-tools’ own Fisher).
       </div>
     </section>
 
@@ -565,7 +565,7 @@
       </div>
       <div class="item">
         <div class="label">Save [great circle]...</div>
-        <div class="desc">Writes the current <strong>great circles</strong> list (glon, glat, ad1, ai1, ad2, ai2), the format <strong>File [great circle]...</strong> reads back. (The Project — <code>self.project_entries</code>/VGP block — already has its own save: <strong>Project → Export to Project</strong>.)</div>
+        <div class="desc">Writes the current <strong>great circles</strong> list (glon, glat, ad1, ai1, ad2, ai2), the format <strong>File [great circle]...</strong> reads back. (The Project and its VGP block already has its own save: <strong>Project → Export to Project</strong>.)</div>
       </div>
       <div class="item" id="data-manual">
         <div class="label">Manual [D-I]... <span class="mono">(Cmd+Shift+M / Ctrl+Shift+M)</span></div>
@@ -608,7 +608,7 @@
     <!-- ========================= GRAPHICS ========================= -->
     <section class="menu" id="graphics">
       <h2>Graphics <span class="menu-tag">plots, projects, VGP maps, export</span></h2>
-      <p class="menu-desc">Everything that draws something — the native stereonet, the Project/VGP-Project systems, projection settings, and SVG export — gathered into one menu (originally split across "Command" and "Projection").</p>
+      <p class="menu-desc">Everything that draws something — the native stereonet, the Project/VGP-Project systems, projection settings, and SVG export — gathered into one menu.</p>
 
       <div class="item" id="graphics-plot">
         <div class="label">Plot stereo <span class="mono">(Cmd+P / Ctrl+Shift+P)</span></div>
@@ -616,7 +616,7 @@
       </div>
       <div class="item">
         <div class="label">Plot stereo project</div>
-        <div class="desc">Draws whatever is currently loaded in the <strong>Project</strong> system (<code>self.project_entries</code> — see the <a href="#project">Project</a> menu) instead of the plain directions/means/great-circles lists: each entry keeps its own symbol, color and size, and consecutive same-layer directions are connected by great-circle arcs.</div>
+        <div class="desc">Draws whatever is currently loaded in the <strong>Project</strong> system (see the <a href="#project">Project</a> menu) instead of the plain directions/means/great-circles lists: each entry keeps its own symbol, color and size, and consecutive same-layer directions are connected by great-circle arcs.</div>
       </div>
       <div class="item">
         <div class="label">Plot VGPs on Map</div>
@@ -624,11 +624,11 @@
       </div>
       <div class="item">
         <div class="label">Plot VGP Project...</div>
-        <div class="desc">Plots <code>self.project_vgp_entries</code> — the VGP block of whatever was last opened via <strong>Load Project...</strong> — on the same kind of world map, but with each VGP's <strong>own</strong> symbol/color, and its dp/dm confidence oval drawn around it whenever the underlying project file also recorded the sampling site's own lat/lon (see <a href="#sp-vgp">VGP block</a> below); otherwise a plain circle of radius p95 is drawn instead. Requires having loaded a project with a VGP block first — it does not prompt for its own file.</div>
+        <div class="desc">Plots the VGP block of whatever was last opened via <strong>Load Project...</strong> — on the same kind of world map, but with each VGP's <strong>own</strong> symbol/color, and its dp/dm confidence oval drawn around it whenever the underlying project file also recorded the sampling site's own lat/lon (see <a href="#sp-vgp">VGP block</a> below); otherwise a plain circle of radius p95 is drawn instead. Requires having loaded a project with a VGP block first — it does not prompt for its own file.</div>
       </div>
       <div class="item">
         <div class="label">Clear Screen</div>
-        <div class="desc">Clears the plot canvas. Every plot-producing command in this app (all of <strong>Graphics</strong>’ Plot commands, <strong>PmagPy-tools</strong>’ statistical tests, <strong>K-T</strong> and <strong>Hysteresis</strong> on a new sample, <strong>Pmag Utilities → Site Map → Plot sites</strong>) now calls this automatically first — they all share the same canvas, and a few plot types (multi-image ones especially) leave it a different size than a stereonet, which used to bleed through into the next unrelated plot until Clear Screen was clicked by hand. Re-drawing the <em>same</em> plot with tweaked settings (Hysteresis’ Normalize Plot toggle, or clicking the field-max axis) does not re-clear — only a genuinely new plot does.</div>
+        <div class="desc">Clears the plot canvas. Every plot-producing command in this app (all of <strong>Graphics</strong>’ Plot commands, <strong>PmagPy-tools</strong>’ statistical tests, <strong>K-T</strong> and <strong>Hysteresis</strong> on a new sample, <strong>Pmag Utilities → Site Map → Plot sites</strong>) calls this automatically first, since they all share the same canvas. Re-drawing the <em>same</em> plot with tweaked settings (Hysteresis’ Normalize Plot toggle, or clicking the field-max axis) does not re-clear — only a genuinely new plot does.</div>
       </div>
       <div class="item">
         <div class="label">Graph title...</div>
@@ -656,12 +656,12 @@
       </div>
       <div class="item" id="graphics-svg">
         <div class="label">Export SVG...</div>
-        <div class="desc">Exports whichever plot is currently displayed to an SVG file. For <strong>Plot stereo</strong> and <strong>Plot stereo project</strong> specifically, the plot is re-rendered through a dedicated writer that faithfully reproduces the original Fortran's own SVG output (<code>svgwriter.py</code>, port of <code>graphicsAWE.f95</code>'s <code>svginit</code>/<code>svgplot</code>/<code>newlayer</code>) rather than matplotlib's generic exporter — verified byte-for-byte against real historical exports of both:
+        <div class="desc">Exports whichever plot is currently displayed to an SVG file. For <strong>Plot stereo</strong> and <strong>Plot stereo project</strong> specifically, the plot is re-rendered through a dedicated writer, the same SVG output as the former Fortran program, rather than matplotlib's generic exporter:
           <ul style="margin:0.4rem 0 0 1.2rem; padding:0;">
             <li>a continuous trace (a confidence ellipse's 120 segments, for instance) is written as a single <code>&lt;polyline&gt;</code> — one selectable object — instead of matplotlib's one separate path per segment;</li>
-            <li>for <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is additionally wrapped in its own <code>&lt;g id="layer name"&gt;</code>, exactly like the original Fortran's <code>newlayer</code>.</li>
+            <li>for <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is additionally wrapped in its own <code>&lt;g id="layer name"&gt;</code>.</li>
           </ul>
-          Most other plots (K-T, Hysteresis, VGP maps, most of PmagPy-tools…) are shown in the canvas as a reloaded PNG (<code>imshow</code>, since those PmagPy functions draw with their own standalone <code>pyplot</code> calls rather than onto this app's shared <code>Figure</code>) — exporting one of those still writes an SVG file, but its only content is that same bitmap re-encapsulated, not real vector paths. <strong>Predicted field curve...</strong> is an exception despite going through the same PNG/<code>imshow</code> preview — a user report ("the graphic export is not a full svg but an encapsulated poor resolution png file") prompted a dedicated path (<code>stereo_pmagpy.save_field_curve_svg</code>) that rebuilds the exact same plot directly as vector lines/error bars/fill — a real, scalable SVG rather than an embedded raster.
+          Most other plots (K-T, Hysteresis, VGP maps, most of PmagPy-tools…) are shown in the canvas as a reloaded PNG (<code>imshow</code>, since those PmagPy functions draw with their own standalone <code>pyplot</code> calls rather than onto this app's shared <code>Figure</code>) — exporting one of those still writes an SVG file, but its only content is that same bitmap re-encapsulated, not real vector paths. <strong>Predicted field curve...</strong> is an exception: its export rebuilds the plot as vector lines, error bars and fills — a real, scalable SVG rather than an embedded raster.
         </div>
       </div>
     </section>
@@ -669,82 +669,82 @@
     <!-- ========================= STATISTICS ========================= -->
     <section class="menu" id="statistics">
       <h2>Statistics <span class="menu-tag">Fisher family & structural tests</span></h2>
-      <p class="menu-desc">Directional statistics on the current <strong>directions</strong>/<strong>great circles</strong> lists — mostly native ports of the original Fortran's own routines (<code>stereo_stats.py</code>), independent of the PmagPy-backed tests under <strong>PmagPy-tools</strong>.</p>
+      <p class="menu-desc">Directional statistics on the current <strong>directions</strong>/<strong>great circles</strong> lists — native routines, independent of the PmagPy-backed tests under <strong>PmagPy-tools</strong>.</p>
 
       <div class="item" id="statistics-fisher">
         <div class="label">Fisher Statistics... <span class="mono">(Cmd+F / Ctrl+Shift+F)</span></div>
-        <div class="desc">Fisher (1953) mean of the current directions (≥2 needed), with an optional angular cutoff to drop points too far from the mean before finalizing it. The resulting mean is appended to <strong>means</strong>. Port of <code>ANGU</code>.</div>
+        <div class="desc">Fisher (1953) mean of the current directions (≥2 needed), with an optional angular cutoff to drop points too far from the mean before finalizing it. The resulting mean is appended to <strong>means</strong>.</div>
       </div>
       <div class="item">
         <div class="label">Fisher Dir+GC...</div>
-        <div class="desc">Combined Fisher mean from directions <em>and</em> great circles together (McFadden &amp; McElhinny 1988) — needs at least 3 entries between the two lists, with optional sector weighting on the great circles and a manual starting direction if no plain directions are loaded yet. Port of <code>FISHGC</code>.</div>
+        <div class="desc">Combined Fisher mean from directions <em>and</em> great circles together (McFadden &amp; McElhinny 1988) — needs at least 3 entries between the two lists, with optional sector weighting on the great circles and a manual starting direction if no plain directions are loaded yet.</div>
       </div>
       <div class="item">
         <div class="label">Fisher recursive...</div>
-        <div class="desc">Like <strong>Fisher Statistics</strong>, but the outlier cutoff (default 20°, prompted) is applied recursively, re-trimming and re-computing the mean each pass, needs ≥3 directions. Port of <code>angurecur</code>.</div>
+        <div class="desc">Like <strong>Fisher Statistics</strong>, but the outlier cutoff (default 20°, prompted) is applied recursively, re-trimming and re-computing the mean each pass, needs ≥3 directions.</div>
       </div>
       <div class="item" id="statistics-strati">
         <div class="label">Fisher Strati</div>
-        <div class="desc">Needs ≥3 directions. Rotates each direction (declination +90°) and replaces the <strong>great circles</strong> list with the resulting poles — a direct port of <code>STRATI</code>, side effect included (the original Fortran overwrites its own great-circle array the same way).</div>
+        <div class="desc">Needs ≥3 directions. Rotates each direction (declination +90°) and replaces the <strong>great circles</strong> list with the resulting poles (the existing great circles are overwritten).</div>
       </div>
       <div class="item">
         <div class="label">progressive Fold test...</div>
-        <div class="desc">Loads its own site-by-site data file (site, dec, inc, azimuth, dip — site column optional) independent of whatever is already loaded, and replaces <strong>directions</strong> with the set of directions unfolded at the percentage of tilt correction that maximizes clustering. Port of <code>FOLDTEST</code>.</div>
+        <div class="desc">Loads its own site-by-site data file (site, dec, inc, azimuth, dip — site column optional) independent of whatever is already loaded, and replaces <strong>directions</strong> with the set of directions unfolded at the percentage of tilt correction that maximizes clustering.</div>
       </div>
       <div class="item" id="statistics-inc">
         <div class="label">Mean Inclination only</div>
-        <div class="desc">Needs ≥2 directions. McFadden &amp; Reid (1982) inclination-only estimator: reports the arithmetic mean, the Arason-biased mean, the McFadden-unbiased mean, a precision parameter and α95. A native port (<code>stereo_stats.mean_inclination_native</code>), distinct from the PmagPy-backed <strong>Mean Inclination</strong> under PmagPy-tools (same statistical method, independent implementation).</div>
+        <div class="desc">Needs ≥2 directions. McFadden &amp; Reid (1982) inclination-only estimator: reports the arithmetic mean, the Arason-biased mean, the McFadden-unbiased mean, a precision parameter and α95. A native implementation, distinct from the PmagPy-backed <strong>Mean Inclination</strong> under PmagPy-tools (same statistical method, independent implementation).</div>
       </div>
       <div class="item">
         <div class="label">smallcircles Intersect</div>
-        <div class="desc">Computes small-circle intersections from the first two or three entries currently in <strong>means</strong> — a limitation inherited directly from the original Fortran (<code>intersect2</code>), which only ever reads the first few mean directions rather than letting you pick which ones. Appends the intersection point(s) found to <strong>directions</strong>.</div>
+        <div class="desc">Computes small-circle intersections from the first two or three entries currently in <strong>means</strong> (you cannot pick which ones). Appends the intersection point(s) found to <strong>directions</strong>.</div>
       </div>
       <div class="item" id="statistics-angle">
         <div class="label">angular departure from a specific direction...</div>
-        <div class="desc">For each current direction, the angular distance ("ADM") from a user-supplied reference direction (default: the geographic axial dipole, dec=0/inc=90) — flagged with <code>&gt;</code> when it exceeds twice the set's own angular standard deviation about that same reference ("STV", printed first). Renamed from the original Fortran's <code>STDDIP</code> label ("St Dev dipole") to describe what it actually reports: unlike <strong>Fisher Statistics</strong>, the reference is fixed by you, not the data's own Fisher mean.</div>
+        <div class="desc">For each current direction, the angular distance ("ADM") from a user-supplied reference direction (default: the geographic axial dipole, dec=0/inc=90) — flagged with <code>&gt;</code> when it exceeds twice the set's own angular standard deviation about that same reference ("STV", printed first). Unlike <strong>Fisher Statistics</strong>, the reference is fixed by you, not the data's own Fisher mean.</div>
       </div>
       <div class="item">
         <div class="label">Reversal angle...</div>
-        <div class="desc">Compares the current directions against a user-given expected normal-polarity direction and reports the angle each one departs by. Port of <code>reversalangle</code>.</div>
+        <div class="desc">Compares the current directions against a user-given expected normal-polarity direction and reports the angle each one departs by.</div>
       </div>
       <div class="item">
         <div class="label">difference angle...</div>
-        <div class="desc">Reads a file of direction pairs (D0, I0, D1, I1) and reports the angle between each pair, one line per row. Port of <code>difangle</code>.</div>
+        <div class="desc">Reads a file of direction pairs (D0, I0, D1, I1) and reports the angle between each pair, one line per row.</div>
       </div>
     </section>
 
     <!-- ========================= PROJECT ========================= -->
     <section class="menu" id="project">
       <h2>Project <span class="menu-tag">multi-layer symbol/color system</span></h2>
-      <p class="menu-desc">A separate in-memory list, <code>self.project_entries</code> — directions, means and great circles together, each with its own hand-editable symbol, color and size, grouped into named "layers". Independent of the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists under Data. The plotting commands for this system (<strong>Plot stereo project</strong>, <strong>Plot VGP Project...</strong>) now live under <a href="#graphics">Graphics</a>, alongside the rest of the plotting commands.</p>
+      <p class="menu-desc">A separate in-memory list — directions, means and great circles together, each with its own hand-editable symbol, color and size, grouped into named "layers". Independent of the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists under Data. The plotting commands for this system (<strong>Plot stereo project</strong>, <strong>Plot VGP Project...</strong>) are under <a href="#graphics">Graphics</a>, alongside the rest of the plotting commands.</p>
 
       <div class="callout">
         <strong>Why layers?</strong> A "layer" is just a name shared by a run of consecutive entries — canonically one <strong>site</strong> when the file comes from STARpaleomag_Py's own "export results to Stereo_Py…" (which sets <code>layer</code> to the site's own 6-character code — see the <a href="#stereoproject">Stereo Project file format</a> reference below), but any grouping the project file's author finds useful works just as well: a formation, a locality, a polarity chron, a batch of specimens measured together. That grouping earns its keep in two places:
         <ul style="margin:0.5rem 0 0 1.2rem; padding:0;">
           <li><strong>Statistics</strong> — <strong>Fisher Project</strong> computes one Fisher mean per layer automatically, so re-deriving (or double-checking) a site mean from its constituent specimen directions is a single menu command, not a manual selection.</li>
-          <li><strong>Publication figures</strong> — <strong>Export SVG…</strong> writes each layer into its own named <code>&lt;g&gt;</code> (see below). Opened in Illustrator or Inkscape, that becomes one toggleable, independently selectable layer per site (or whatever the grouping was): hide a site to declutter an overlay of many, recolor one site's cluster without touching the others, or move a legend — all without re-plotting from StereoUtils_Py. This is exactly why the original Fortran wrote layers into its SVG output in the first place, and why re-flattening them (as a naive matplotlib export would) loses real editorial value, not just a cosmetic label.</li>
+          <li><strong>Publication figures</strong> — <strong>Export SVG…</strong> writes each layer into its own named <code>&lt;g&gt;</code> (see below). Opened in Illustrator or Inkscape, that becomes one toggleable, independently selectable layer per site (or whatever the grouping was): hide a site to declutter an overlay of many, recolor one site's cluster without touching the others, or move a legend — all without re-plotting from StereoUtils_Py.</li>
         </ul>
       </div>
 
       <div class="item" id="project-manage">
         <div class="label">Load Project...</div>
-        <div class="desc">Loads a project file into <code>self.project_entries</code> — and, if the file has a <code>#&nbsp;VGP</code> block (the newer 3-block format written by STARpaleomag_Py, see <a href="#stereoproject">reference</a> below), its VGP entries too, into <code>self.project_vgp_entries</code>, ready for <strong>Graphics&nbsp;→&nbsp;Plot VGP Project...</strong> without loading anything a second time. An older, plain (no <code>#</code> block markers) project file loads exactly as before, with no VGP entries.</div>
+        <div class="desc">Loads a project file into the Project — and, if the file has a <code>#&nbsp;VGP</code> block (the newer 3-block format written by STARpaleomag_Py, see <a href="#stereoproject">reference</a> below), its VGP entries too, ready for <strong>Graphics&nbsp;→&nbsp;Plot VGP Project...</strong> without loading anything a second time. An older, plain (no <code>#</code> block markers) project file loads exactly as before, with no VGP entries.</div>
       </div>
       <div class="item">
         <div class="label">Export to Project</div>
-        <div class="desc">Builds <code>self.project_entries</code> from whatever is currently in the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists (Data menu) — the reverse direction from <strong>Load Project</strong> — and offers to save the result to a file. A quick way to get an existing plain selection into the Project system's per-entry symbol/color model.</div>
+        <div class="desc">Builds the Project from whatever is currently in the plain <strong>directions</strong>/<strong>means</strong>/<strong>great circles</strong> lists (Data menu) — the reverse direction from <strong>Load Project</strong> — and offers to save the result to a file. A quick way to get an existing plain selection into the Project system's per-entry symbol/color model.</div>
       </div>
       <div class="item">
         <div class="label">List Project</div>
-        <div class="desc">Prints every entry currently in <code>self.project_entries</code>, one line each, in the exact column layout a project file uses — convenient to copy straight into a text file.</div>
+        <div class="desc">Prints every entry currently in the Project, one line each, in the exact column layout a project file uses — convenient to copy straight into a text file.</div>
       </div>
       <div class="item">
         <div class="label">Init Project</div>
-        <div class="desc">Clears <code>self.project_entries</code>.</div>
+        <div class="desc">Clears the Project.</div>
       </div>
       <div class="item" id="project-fisher">
         <div class="label">Fisher Project...</div>
-        <div class="desc">Computes a Fisher mean for each group of <em>consecutive</em> same-layer lines in <code>self.project_entries</code> (not a global group-by-layer — a layer name reappearing later in the file after a different layer starts a separate group), with an optional angular filter. Prints ready-to-paste project-file lines for each mean. Port of <code>fisherproject</code>.</div>
+        <div class="desc">Computes a Fisher mean for each group of <em>consecutive</em> same-layer lines of the Project (not a global group-by-layer — a layer name reappearing later in the file after a different layer starts a separate group), with an optional angular filter. Prints ready-to-paste project-file lines for each mean.</div>
       </div>
       <div class="item" id="project-help">
         <div class="label">Help Project (colors & symbols)</div>
@@ -755,7 +755,7 @@
     <!-- ========================= PMAG UTILITIES ========================= -->
     <section class="menu" id="pu">
       <h2>Pmag Utilities <span class="menu-tag">VGP, rotation, correction toolbox</span></h2>
-      <p class="menu-desc">A large collection of mostly-independent, mostly-interactive calculators (native ports of <code>pmagoutils.f</code>, via <code>stereo_pmagutils.py</code>), organized as submenus matching the original Fortran's own groupings. Each one is self-contained — none of them read or write the Data/Project working lists, with the few exceptions noted below.</p>
+      <p class="menu-desc">A large collection of mostly-independent, mostly-interactive calculators, organized as submenus. Each one is self-contained — none of them read or write the Data/Project working lists, with the few exceptions noted below.</p>
 
       <h3 class="group" id="pu-vgp">VGP conversions</h3>
       <div class="item">
@@ -792,7 +792,7 @@
       <h3 class="group" id="pu-paleolat">Paleolatitude</h3>
       <div class="item">
         <div class="label">Paleolatitude at one site (file)...</div>
-        <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file. If the chosen file is one of the two bundled multi-continent curves (Torsvik et al., 2012 or Vaes et al., 2023 — recognized by file name), it asks for a continent/craton instead of a polarity: the original Fortran (<code>paleolati</code>) never asked for polarity on these two curves, applying a fixed pole-convention flip instead, which is reproduced here as-is.</div>
+        <div class="desc">Reads an apparent polar wander path file (age, VGP lat, VGP lon, optional α95) and, given one site's lat/lon and its expected polarity, computes paleolatitude through the time range covered by the file. If the chosen file is one of the two bundled multi-continent curves (Torsvik et al., 2012 or Vaes et al., 2023 — recognized by file name), it asks for a continent/craton instead of a polarity, with a fixed pole convention for these two curves.</div>
       </div>
       <div class="item">
         <div class="label">Inclination a95 to Plat and err...</div>
@@ -802,7 +802,7 @@
       <h3 class="group" id="pu-gmt">GMT rotation export</h3>
       <div class="item">
         <div class="label">Rotation vers GMT plot...</div>
-        <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script (<code>.vec</code>/<code>.pie</code> now each start with a <code>#</code> header line naming their columns). The reference APWP can be a plain (age, pole_lat, pole_lon, p95) file of your own, or one of the two bundled multi-continent curves — Torsvik et al. (2012) or Vaes et al. (2023) — picked by continent/craton (see <strong>Aide Rotation</strong> for the exact list and file layout). If the data file's very first line is a path (optionally followed by a continent/craton name, e.g. <code>full_path/Torsvik_APWPs.csv Europe</code>), that reference is auto-located instead of asking for it — first by that literal path, then, if it doesn't exist on this machine, by re-joining its last two path segments (parent folder + filename) under your configured APWP folder (see <strong>Set APWP folder...</strong>) — this is how an old data file written on a different computer still finds its curve here.</div>
+        <div class="desc">The most involved item in this menu: reads a site data file and a reference-APWP file, then over a chosen age range computes rotation vectors and their uncertainty ("pie") for each age step, writing <code>.res</code>/<code>.vec</code>/<code>.pie</code> files ready to feed into a GMT plotting script (<code>.vec</code>/<code>.pie</code> each start with a <code>#</code> header line naming their columns). The reference APWP can be a plain (age, pole_lat, pole_lon, p95) file of your own, or one of the two bundled multi-continent curves — Torsvik et al. (2012) or Vaes et al. (2023) — picked by continent/craton (see <strong>Aide Rotation</strong> for the exact list and file layout). If the data file's very first line is a path (optionally followed by a continent/craton name, e.g. <code>full_path/Torsvik_APWPs.csv Europe</code>), that reference is auto-located instead of asking for it — first by that literal path, then, if it doesn't exist on this machine, by re-joining its last two path segments (parent folder + filename) under your configured APWP folder (see <strong>Set APWP folder...</strong>) — this is how an old data file written on a different computer still finds its curve here.</div>
       </div>
       <div class="item">
         <div class="label">Aide Rotation</div>
@@ -816,7 +816,7 @@
       <h3 class="group" id="pu-sitemap">Site Map</h3>
       <div class="item">
         <div class="label">prmag to KML (Google Earth)...</div>
-        <div class="desc">Reads a <code>.prmag</code> file (its own minimal reader, specimen/site/lat/lon plus strike/dip/geologic type/lithology/age from the site's first specimen) and writes a Google Earth KML — one placemark per site, coordinates averaged across the site's specimens, styled to match the original Fortran KML output (bold field labels, line breaks, the same <code>styleUrl</code>).</div>
+        <div class="desc">Reads a <code>.prmag</code> file (its own minimal reader, specimen/site/lat/lon plus strike/dip/geologic type/lithology/age from the site's first specimen) and writes a Google Earth KML — one placemark per site, coordinates averaged across the site's specimens (bold field labels, line breaks).</div>
       </div>
       <div class="item">
         <div class="label">prmag to GMT map script...</div>
@@ -868,7 +868,7 @@
       <h3 class="group" id="pu-paleoint">Paleointensity</h3>
       <div class="item">
         <div class="label">mean paleointensity...</div>
-        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — which can now be a real <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side, matching the original Fortran's own three-row table. The old plain-format file keeps its original behavior: the whole file averaged in one shot, no selection step. Opening this menu explains both accepted formats in the console first (the file-open dialog's own title is often not shown by macOS's native panel), and offers a <code>*.pmagint</code> filter alongside "All files" so these files are easy to find.</div>
+        <div class="desc">Weighted mean of paleointensity triples (F, Q, N — intensity, quality/weight, count), typed one at a time, <em>or</em> from a file — either a <code>.pmagint</code> (STARpaleomag_Py/AMS_Py's shared paleointensity archive, auto-detected from its tab-separated header) as well as the old plain 3-column format. For a <code>.pmagint</code>, every line is listed with an index and its H/ANI(sotropy-corrected)/cool(ing-corrected) values, and a range (<code>i j</code>) is selected before computing — repeatable on the same file without reopening it. The result table then reports all three variants (raw/aniso-corrected/cooling-corrected) side by side. A plain-format file is averaged as a whole, with no selection step. Opening this menu explains both accepted formats in the console first (the file-open dialog's own title is often not shown by macOS's native panel), and offers a <code>*.pmagint</code> filter alongside "All files" so these files are easy to find.</div>
       </div>
       <div class="item">
         <div class="label">VDM and VADM...</div>
@@ -880,7 +880,7 @@
       </div>
       <div class="item">
         <div class="label">Relocate D I F...</div>
-        <div class="desc">Batch relocation of paired direction+paleointensity data (site, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing. Same <strong>FILE (1) / KEYBOARD (3)</strong> choice as <strong>mean paleointensity</strong> — keyboard entry accepts one pasted block of several lines at once, each backed up to a temp file the same way other manual-entry menus are. Opening this menu shows the expected column layout in the console first (<code>site lat lon dec inc a95 F F_err</code>), and the file dialog offers a text-file filter. Columns are matched by header name when present (common aliases accepted, e.g. <code>declination</code> for <code>dec</code>) — including an unusual label split by an embedded space inside parentheses, such as <code>F(in microT)</code>, which would otherwise misalign every later column by one position and silently drop every row (confirmed against <code>reference/Stereo_V19/test_Relocate.txt</code>, a real historical test file using exactly this header style, which also carries age/age_err columns that are simply ignored now). Falls back to the original Fortran's fixed 11-column layout (with a <code>litho</code> column) only when no header is present at all. The result table reports every field from the original Fortran's own output line except age — site, dec/inc/α95, the relocated dec_r/inc_r, the original intensity+error, the target latitude, VDM/VADM at the original site (in 10²² Am²), and the relocated Fvdm/Fvadm.</div>
+        <div class="desc">Batch relocation of paired direction+paleointensity data (site, lat/lon, dec/inc/α95, intensity+error) to a common target lat/lon, for comparing results from different sites/latitudes on equal footing. Same <strong>FILE (1) / KEYBOARD (3)</strong> choice as <strong>mean paleointensity</strong> — keyboard entry accepts one pasted block of several lines at once, each backed up to a temp file the same way other manual-entry menus are. Opening this menu shows the expected column layout in the console first (<code>site lat lon dec inc a95 F F_err</code>), and the file dialog offers a text-file filter. Columns are matched by header name when present (common aliases accepted, e.g. <code>declination</code> for <code>dec</code>) — including an unusual label split by an embedded space inside parentheses, such as <code>F(in microT)</code>; other columns (e.g. age/age_err) are ignored. Falls back to the older fixed 11-column layout (with a <code>litho</code> column) only when no header is present at all. The result table reports site, dec/inc/α95, the relocated dec_r/inc_r, the original intensity+error, the target latitude, VDM/VADM at the original site (in 10²² Am²), and the relocated Fvdm/Fvadm.</div>
       </div>
 
       <h3 class="group" id="pu-igrf">IGRF</h3>
@@ -911,7 +911,7 @@
     <!-- ========================= PMAGPY-TOOLS ========================= -->
     <section class="menu" id="pmagpy">
       <h2>PmagPy-tools <span class="menu-tag">calls the real PmagPy package</span></h2>
-      <p class="menu-desc">Not a port — the original Fortran routines behind this menu only ever wrote a file and shelled out to a standalone PmagPy script; this menu calls the installed <code>pmagpy</code> package's own functions directly (<code>stereo_pmagpy.py</code>). Bootstrap ellipse is new work: the Fortran's own equivalent routine has its random-number generator disabled in the source (a confirmed bug, not reproduced here), so this uses PmagPy's real bootstrap instead.</p>
+      <p class="menu-desc">Calls the installed <code>pmagpy</code> package's own functions directly. Bootstrap ellipse uses PmagPy's bootstrap.</p>
 
       <div class="item">
         <div class="label">Fisher</div>
@@ -943,19 +943,19 @@
       </div>
       <div class="item">
         <div class="label">Predicted field curve...</div>
-        <div class="desc">Not a port — added on request. Predicted D/I/F time series at a chosen site from a global or paleosecular-variation field model (IGRF14, GUFM1, ARCH3k, CALS3k.4b, CALS10k.1b/.2, PFM9k, HFM.OL1.A1, SHA.DIF.14k, SHAWQ2k, SHAWQ-Iberia — picked from a numbered list showing each model's real date range, read live from PmagPy's own coefficient tables), via <code>pmag.doigrf</code>/<code>ipmag.igrf</code> for every model but GUFM1, which this app wires in directly (<code>pmag.magsyn</code>) since PmagPy's own API doesn't expose it. Plots Dec/Inc/Intensity vs. date (declination wrapped to [−180°, 180°] rather than PmagPy's native [0°, 360°), avoiding a false 350→5 jump at each crossing; the declination panel's Y scale is set automatically from whatever is actually plotted — predicted curve, its uncertainty envelope, and any overlaid data ± a95 — so a real excursion is never silently clipped) and offers to save the series as a text file. GGF100k is left out: a real bug in this copy of PmagPy (<code>coefficients.get_ggf100k()</code> — its epoch list and coefficient array don't have matching lengths) makes it fail on most dates. Optionally overlays your own dated data — a text file of <code>age dec inc a95</code>, plus optional <code>intensity dintensity</code> columns — as points with error bars on the same three panels, to compare a site's real results against the model directly rather than eyeballing two separate plots; direction and intensity are marked independently, so a row with only one or the other (not both) doesn't imply a fake zero value on the panels it doesn't actually cover. <code>a95</code> (a Fisher 95% confidence cone radius, not a per-axis error) is used as-is for the inclination error bar, but divided by <code>cos(inc)</code> for declination — the same cone subtends a wider declination range the steeper the inclination, since meridians converge toward the pole. A richer, tab-separated field format is also accepted directly (e.g. a real compilation with <code>site agemax "age (AD)" agemin dec inc a95 F dF</code> columns): extra columns are ignored, <code>age (AD)</code>/<code>F</code>/<code>dF</code> are recognized as age/intensity/dintensity, and empty cells (a site with only intensity, or only direction) are read correctly rather than shifting the remaining columns. When <code>agemax</code>/<code>agemin</code> are present, a horizontal error bar (dating bracket) is drawn too, on all three panels — without assuming which of the two columns is the older bound, since that convention differs between files; a preferred age that happens to sit slightly outside its own bracket (common when an independent, refined date is used for plotting) just draws a one-sided bar rather than an invalid negative-length one.
-        <br><br><strong>Uncertainty envelope (CALS3k.4b / CALS10k.1b only):</strong> ported from old standalone Fortran sources found locally in <code>Field_Models/</code> (Monika Korte's <code>fielduncert3k.f</code>/<code>CALS10kfield.f</code>, not part of PmagPy itself — added on request after confirming PmagPy's own bundled coefficient tables carry no variance/ensemble data for an envelope to come from). CALS3k.4b and CALS10k.1b store, alongside each of their 120 time-varying Gauss coefficients, a parallel B-spline curve for that coefficient's own uncertainty (the "MAST" estimation procedure); every other model here has no such second curve. Shaded ±1σ bands are drawn on Dec/Inc/Intensity wherever a date falls inside the model's real spline coverage, and the saved text file gets three extra columns (<code>ddec dinc dintensity_uT</code>, <code>n.d</code> where unavailable). Confirmed to be the exact same underlying coefficients already used by PmagPy's own <code>cals3k</code>/<code>cals10k</code> choices (not a different model version), and the uncertainty math itself was checked against the original Fortran recompiled and run locally — exact match to 2 decimal places at a real test site. CALS10k.2, despite sharing the same model family as CALS10k.1b and being the newer/already-wired choice, has no envelope: the local CALS10k.2 data file only contains the point-estimate coefficients, not the uncertainty block.</div>
+        <div class="desc">Predicted D/I/F time series at a chosen site from a global or paleosecular-variation field model (IGRF14, GUFM1, ARCH3k, CALS3k.4b, CALS10k.1b/.2, PFM9k, HFM.OL1.A1, SHA.DIF.14k, SHAWQ2k, SHAWQ-Iberia — picked from a numbered list showing each model's real date range, read live from PmagPy's own coefficient tables), via <code>pmag.doigrf</code>/<code>ipmag.igrf</code> for every model but GUFM1, which this app wires in directly (<code>pmag.magsyn</code>) since PmagPy's own API doesn't expose it. Plots Dec/Inc/Intensity vs. date (declination wrapped to [−180°, 180°] rather than PmagPy's native [0°, 360°), avoiding a false 350→5 jump at each crossing; the declination panel's Y scale is set automatically from whatever is actually plotted — predicted curve, its uncertainty envelope, and any overlaid data ± a95 — so a real excursion is never silently clipped) and offers to save the series as a text file. GGF100k is left out: PmagPy's coefficient tables for it fail on most dates. Optionally overlays your own dated data — a text file of <code>age dec inc a95</code>, plus optional <code>intensity dintensity</code> columns — as points with error bars on the same three panels, to compare a site's real results against the model directly rather than eyeballing two separate plots; direction and intensity are marked independently, so a row with only one or the other (not both) doesn't imply a fake zero value on the panels it doesn't actually cover. <code>a95</code> (a Fisher 95% confidence cone radius, not a per-axis error) is used as-is for the inclination error bar, but divided by <code>cos(inc)</code> for declination — the same cone subtends a wider declination range the steeper the inclination, since meridians converge toward the pole. A richer, tab-separated field format is also accepted directly (e.g. a real compilation with <code>site agemax "age (AD)" agemin dec inc a95 F dF</code> columns): extra columns are ignored, <code>age (AD)</code>/<code>F</code>/<code>dF</code> are recognized as age/intensity/dintensity, and empty cells (a site with only intensity, or only direction) are read correctly rather than shifting the remaining columns. When <code>agemax</code>/<code>agemin</code> are present, a horizontal error bar (dating bracket) is drawn too, on all three panels — without assuming which of the two columns is the older bound, since that convention differs between files; a preferred age that happens to sit slightly outside its own bracket (common when an independent, refined date is used for plotting) just draws a one-sided bar rather than an invalid negative-length one.
+        <br><br><strong>Uncertainty envelope (CALS3k.4b / CALS10k.1b only):</strong> computed as in Monika Korte's Fortran programs (<code>fielduncert3k.f</code>/<code>CALS10kfield.f</code>; PmagPy's coefficient tables carry no uncertainty). CALS3k.4b and CALS10k.1b store, alongside each of their 120 time-varying Gauss coefficients, a parallel B-spline curve for that coefficient's own uncertainty (the "MAST" estimation procedure); every other model here has no such second curve. Shaded ±1σ bands are drawn on Dec/Inc/Intensity wherever a date falls inside the model's real spline coverage, and the saved text file gets three extra columns (<code>ddec dinc dintensity_uT</code>, <code>n.d</code> where unavailable). The coefficients are the same as PmagPy's <code>cals3k</code>/<code>cals10k</code>. CALS10k.2 has no envelope: its data file only contains the point-estimate coefficients.</div>
       </div>
       <div class="item">
         <div class="label">Generate Fisher population (fishgen)...</div>
-        <div class="desc">Not a port — no native Fortran <code>fishgen</code> exists in this project. Generates <em>n</em> Fisher-distributed synthetic directions (precision <em>k</em>, mean dec/inc) via PmagPy's <code>ipmag.fishrot</code>, appended to <strong>directions</strong> (same convention as <strong>File [D-I]...</strong>) so they can immediately be plotted or fed into Fisher/Bootstrap ellipse. Reports the Fisher mean recomputed from the generated sample right away, to compare the requested <em>k</em> against what a finite draw actually recovers.</div>
+        <div class="desc">Generates <em>n</em> Fisher-distributed synthetic directions (precision <em>k</em>, mean dec/inc) via PmagPy's <code>ipmag.fishrot</code>, appended to <strong>directions</strong> (same convention as <strong>File [D-I]...</strong>) so they can immediately be plotted or fed into Fisher/Bootstrap ellipse. Reports the Fisher mean recomputed from the generated sample right away, to compare the requested <em>k</em> against what a finite draw actually recovers.</div>
       </div>
     </section>
 
     <!-- ========================= K-T ========================= -->
     <section class="menu" id="kt">
       <h2>K-T <span class="menu-tag">susceptibility vs. temperature (Curie_OSX)</span></h2>
-      <p class="menu-desc">Port of <code>Curie_OSX</code>'s susceptibility-vs-temperature routines (<code>curie_kt.py</code>) — reading raw <code>.CUR</code>/<code>.CLW</code> instrument files, correcting for the furnace/empty-vessel contribution, normalizing, and estimating the Curie point. Plotted directly with matplotlib (square aspect), not through the pixel-matched <code>plotlib</code> primitives.</p>
+      <p class="menu-desc">Susceptibility-vs-temperature processing (from <code>Curie_OSX</code>) — reading raw <code>.CUR</code>/<code>.CLW</code> instrument files, correcting for the furnace/empty-vessel contribution, normalizing, and estimating the Curie point.</p>
 
       <div class="item">
         <div class="label">Open .CUR/.CLW File...</div>
@@ -979,7 +979,7 @@
       </div>
       <div class="item">
         <div class="label">Curie Point (2nd derivative)</div>
-        <div class="desc">Estimates the Curie point separately for the heating and cooling branches (split at the maximum-temperature index) via the second-derivative-maximum method — despite the original Fortran's own name for this routine ("tauxe"), it is not the literal Tauxe et al. (1996) two-tangent method.</div>
+        <div class="desc">Estimates the Curie point separately for the heating and cooling branches (split at the maximum-temperature index) via the second-derivative-maximum method — not the Tauxe et al. (1996) two-tangent method.</div>
       </div>
       <div class="item">
         <div class="label">Plot K-T</div>
@@ -987,7 +987,7 @@
       </div>
       <div class="item">
         <div class="label">Export to MagIC...</div>
-        <div class="desc">Runs the whole loaded sample list through the same pipeline as <code>Select File from List...</code> (furnace correction, then normalization by the bulk susceptibility or by mass) and writes one MagIC file with a <code>specimens</code> and a <code>measurements</code> table. The specimen name is the <code>.CUR</code> file name without its extension followed by <code>_cur</code> (e.g. <code>11TU5906_cur</code>), so that it differs from its sample; the sample is the file name (<code>11TU5906</code>, the sample name in the paleomag <code>.prmag</code>), or the file name without its last letter when only that exists in the <code>.prmag</code> (<code>13CB0503C</code> → <code>13CB0503</code>). Each point becomes one <code>LP-X-T</code> measurement (temperature in K, <code>susc_chi_volume</code> in SI or <code>susc_chi_mass</code> in m³/kg, "heating"/"cooling" in the description). Optional inputs: the study's <code>.prmag</code>, which keeps only its samples (one K-T list often mixes several studies; skipped entries are listed in the console), and a text file of validated Curie temperatures (<code>specimen Tc_degC</code> per line, the specimen given with or without <code>_cur</code>), written as <code>critical_temp</code>/<code>Curie</code>. The automatic second-derivative estimate is <em>not</em> written as <code>critical_temp</code>: it sometimes picks another inflection (e.g. 33.7 °C on a Patagonian curve). It is only recorded in the description, labelled as not validated. Add the file in STARpaleomag_Py, <code>export to Magic database</code>, to merge it with the paleomag contribution.</div>
+        <div class="desc">Runs the whole loaded sample list through the same pipeline as <code>Select File from List...</code> (furnace correction, then normalization by the bulk susceptibility or by mass) and writes one MagIC file with a <code>specimens</code> and a <code>measurements</code> table. The specimen name is the <code>.CUR</code> file name without its extension followed by <code>_cur</code> (e.g. <code>XX0101_cur</code>), so that it differs from its sample; the sample is the file name (the sample name in the paleomag <code>.prmag</code>), or the file name without its last letter when only that exists in the <code>.prmag</code> (<code>XX0101C</code> → <code>XX0101</code>). Each point becomes one <code>LP-X-T</code> measurement (temperature in K, <code>susc_chi_volume</code> in SI or <code>susc_chi_mass</code> in m³/kg, "heating"/"cooling" in the description). Optional inputs: the study's <code>.prmag</code>, which keeps only its samples (one K-T list often mixes several studies; skipped entries are listed in the console), and a text file of validated Curie temperatures (<code>specimen Tc_degC</code> per line, the specimen given with or without <code>_cur</code>), written as <code>critical_temp</code>/<code>Curie</code>. The automatic second-derivative estimate is <em>not</em> written as <code>critical_temp</code>: it sometimes picks another inflection. It is only recorded in the description, labelled as not validated. Add the file in STARpaleomag_Py, <code>export to Magic database</code>, to merge it with the paleomag contribution.</div>
       </div>
       <div class="item">
         <div class="label">Read MagIC Contribution (PmagPy)...</div>
@@ -998,7 +998,7 @@
     <!-- ========================= HYSTERESIS ========================= -->
     <section class="menu" id="hysteresis">
       <h2>Hysteresis <span class="menu-tag">AGM / VSM / VFTB loop processing (Curie_OSX)</span></h2>
-      <p class="menu-desc">Port of <code>Curie_OSX</code>'s hysteresis-loop routines (<code>curie_hyst.py</code>): paramagnetic/diamagnetic slope correction and Ms/Hc/Mr/Hcr extraction, verified field-by-field against the original Fortran's own historical results log for a real specimen. Three real instrument formats are supported, each with its own reader.</p>
+      <p class="menu-desc">Hysteresis-loop processing (from <code>Curie_OSX</code>): paramagnetic/diamagnetic slope correction and Ms/Hc/Mr/Hcr extraction. Three instrument formats are supported, each with its own reader.</p>
 
       <div class="item">
         <div class="label">Open AGM Sample List... / Open VSM Sample List...</div>
@@ -1019,7 +1019,7 @@
       </div>
       <div class="item">
         <div class="label">Paramagnetic Fit Threshold...</div>
-        <div class="desc">Fraction of the maximum field (default 0.7) above which a point counts as "high field" for the paramagnetic slope fit — a real adjustable setting in the original program, not a fixed constant, and the exact historical value used for any one dataset generally isn't recoverable.</div>
+        <div class="desc">Fraction of the maximum field (default 0.7) above which a point counts as "high field" for the paramagnetic slope fit.</div>
       </div>
       <div class="item">
         <div class="label">Normalize Plot <span class="mono">(Cmd+N / Ctrl+Shift+N)</span></div>
@@ -1047,7 +1047,7 @@ cb0105                    13CB0105_hys  13CB0105  26.3</pre>
       </div>
       <div class="item">
         <div class="label">MagIC Day Plot (PmagPy)</div>
-        <div class="desc">Day plot of PmagPy's <code>rockmag.plot_day</code> from the <code>specimens</code> table: log-log axes (Bcr/Bc 1–100, Mr/Ms 0.005–1), SD/PSD/MD limits, MD slope, SP saturation curve and SP–SD and SD–MD mixing curves. The ratios are taken from <code>hyst_bcr_bc</code> and <code>hyst_mr_ms</code>, or recomputed from the <code>_moment</code> or <code>_mass</code> columns. When specimens lie beyond Bcr/Bc = 100, the console gives their number and the largest value and asks for the axis maximum (Enter keeps 100). The title gives how many specimens are off scale, and every value is listed in the console. (PmagPy's older <code>pmagplotlib.plot_day</code>, with a linear axis stopped at 6, is no longer used.) Click the Bcr/Bc axis to zoom: the console asks for the axis range (min max, logarithmic; empty = 1 100).</div>
+        <div class="desc">Day plot of PmagPy's <code>rockmag.plot_day</code> from the <code>specimens</code> table: log-log axes (Bcr/Bc 1–100, Mr/Ms 0.005–1), SD/PSD/MD limits, MD slope, SP saturation curve and SP–SD and SD–MD mixing curves. The ratios are taken from <code>hyst_bcr_bc</code> and <code>hyst_mr_ms</code>, or recomputed from the <code>_moment</code> or <code>_mass</code> columns. When specimens lie beyond Bcr/Bc = 100, the console gives their number and the largest value and asks for the axis maximum (Enter keeps 100). The title gives how many specimens are off scale, and every value is listed in the console. Click the Bcr/Bc axis to zoom: the console asks for the axis range (min max, logarithmic; empty = 1 100).</div>
       </div>
       <div class="item">
         <div class="label">Click the X-axis</div>
@@ -1081,7 +1081,7 @@ cb0105                    13CB0105_hys  13CB0105  26.3</pre>
         </table>
       </div>
       <div class="callout">
-        <strong>alpha95==0.0 quirk.</strong> Inherited from the original Fortran <code>loadproject</code>: a row whose <code>alpha95</code> reads exactly 0.0 is forced to <code>type=d</code> on load, whatever the file actually says — a plane written with <code>alpha95=0</code> would silently lose its great circle and plot as a point instead. STARpaleomag_Py's exporter avoids this by writing the fit's own MAD there for a plane row rather than 0.0.
+        <strong>alpha95==0.0 quirk.</strong> A row whose <code>alpha95</code> reads exactly 0.0 is forced to <code>type=d</code> on load, whatever the file actually says — a plane written with <code>alpha95=0</code> would silently lose its great circle and plot as a point instead. STARpaleomag_Py's exporter avoids this by writing the fit's own MAD there for a plane row rather than 0.0.
       </div>
 
       <h3 class="group" id="sp-means"># mean directions</h3>
