@@ -71,3 +71,7 @@ On an Intel Mac, use the Python instructions above.
 ## User Guide
 
 In the program: *Help > User Guide*. The same guide is in this repository: `help/StereoUtils_Py_Guide.html`.
+
+## License
+
+MIT — see `LICENSE`.
