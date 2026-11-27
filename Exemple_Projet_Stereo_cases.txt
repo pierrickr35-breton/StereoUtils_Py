@@ -1,0 +1,66 @@
+! Exemple de fichier projet StereoUtils_Py : 4 stereos sur une page (2 lignes x 2 colonnes).
+! Les lignes commencant par ! sont des commentaires. Colonnes separees par des tabulations.
+!
+! CASES : une ligne de position, seule sur sa ligne et sans # ni !, ouvre une case :
+!   top left / top center / top right / middle left ... / bottom right  (ou upper, lower)
+!   un titre peut suivre deux-points :   top left: Site A, in situ
+!   grille plus grande :                 panel 2 4   (ligne 2, colonne 4)
+!   Tout ce qui suit, dans les deux blocs, va dans cette case jusqu'a la ligne de position suivante.
+!
+! BLOC 1 : directions individuelles      layer id type dec inc alpha95 tilt_correction symbol color size info
+!   type   d = direction (point seul)    g = grand cercle (plan ; dec/inc = pole du plan)
+! BLOC 2 : moyennes                       layer id dec inc alpha95 n tilt_correction symbol color size info
+!   chaque moyenne est tracee avec son cercle de confiance alpha95
+!
+! symbol : c cercle   t triangle   s carre   l losange   e etoile
+!          symbole plein = hemisphere inferieur, vide = hemisphere superieur (inclinaison negative)
+! color  : nom (black white red green blue yellow orange purple pink brown gray cyan magenta lime
+!          navy teal gold violet turquoise maroon olive salmon skyblue) ou code R_G_B, ex. 0_128_255
+! size   : taille du symbole en cm (0.15 petit ... 0.55 grand)
+! tilt_correction : 0 in situ, 100 apres correction de pendage (information, non utilisee pour le trace)
+! layer  : nom du calque ; dans le SVG, un groupe par calque et par case (a_Site_A, b_...)
+! info   : texte libre
+!
+# individual directions
+#layer	id	type	dec	inc	alpha95	tilt_correction	symbol	color	size	info
+
+top left: Site A (in situ)
+Site A	A01	d	352.1	48.3	0.0	0	c	black	0.25	
+Site A	A02	d	5.6	52.0	0.0	0	c	black	0.25	
+Site A	A03	d	358.9	44.7	0.0	0	c	black	0.25	
+Site A	A04	d	11.2	55.8	0.0	0	c	black	0.25	
+Site A	A05	d	349.5	51.2	0.0	0	c	black	0.25	
+Site A	A06	d	2.3	40.9	0.0	0	c	black	0.25	
+
+top right: Site B, plans et directions
+Site B planes	B01	g	120.0	30.0	0.0	0	c	blue	0.2	grand cercle
+Site B planes	B02	g	95.0	25.0	0.0	0	c	blue	0.2	grand cercle
+Site B planes	B03	g	140.0	35.0	0.0	0	c	blue	0.2	grand cercle
+Site B lines	B04	d	20.5	40.2	0.0	0	t	blue	0.3	
+Site B lines	B05	d	28.4	45.1	0.0	0	t	blue	0.3	
+
+bottom left: Sites C et D
+Site C	C01	d	185.3	-38.2	0.0	0	t	0_128_255	0.3	polarite inverse
+Site C	C02	d	172.0	-45.5	0.0	0	t	0_128_255	0.3	polarite inverse
+Site C	C03	d	190.8	-41.0	0.0	0	t	0_128_255	0.3	polarite inverse
+Site C	C04	d	178.4	-35.7	0.0	0	t	0_128_255	0.3	polarite inverse
+Site D	D01	d	15.2	44.4	0.0	0	s	orange	0.3	
+Site D	D02	d	8.7	49.9	0.0	0	s	orange	0.3	
+Site D	D03	d	21.6	38.8	0.0	0	s	orange	0.3	
+
+# mean directions
+#layer	id	dec	inc	alpha95	n	tilt_correction	symbol	color	size	info
+
+top left
+Site A mean	A	3.2	48.9	5.4	6	0	e	red	0.55	moyenne du site A
+
+bottom left
+Site C mean	C	181.6	-40.3	7.6	4	0	e	0_128_255	0.55	
+Site D mean	D	15.1	44.6	9.8	3	0	e	orange	0.55	
+
+bottom right: Moyennes de sites
+Means	14NQ01	1.1	40.3	2.8	9	0	l	red	0.45	
+Means	14NQ02	355.0	58.9	5.2	8	0	l	red	0.45	
+Means	14XL07	342.2	45.3	11.1	9	0	c	green	0.45	
+Means	14XL15	7.8	37.4	12.5	13	0	c	green	0.45	
+Means	15NQ47	167.2	-57.0	4.1	11	0	s	purple	0.45	
