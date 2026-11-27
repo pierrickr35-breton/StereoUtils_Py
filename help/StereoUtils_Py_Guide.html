@@ -473,6 +473,7 @@
       <li><a href="#pmagpy">PmagPy-tools</a></li>
       <li><a href="#kt">K-T</a></li>
       <li><a href="#hysteresis">Hysteresis</a></li>
+      <li><a href="#mpms">MPMS</a></li>
     </ul>
     <p class="toc-title">Reference</p>
     <ul>
@@ -616,7 +617,8 @@
       </div>
       <div class="item">
         <div class="label">Plot stereo project</div>
-        <div class="desc">Draws whatever is currently loaded in the <strong>Project</strong> system (see the <a href="#project">Project</a> menu) instead of the plain directions/means/great-circles lists: each entry keeps its own symbol, color and size, and consecutive same-layer directions are connected by great-circle arcs.</div>
+        <div class="desc">Draws whatever is currently loaded in the <strong>Project</strong> system (see the <a href="#project">Project</a> menu) instead of the plain directions/means/great-circles lists: each entry keeps its own symbol, color and size, and consecutive same-layer directions are connected by great-circle arcs.
+          <p style="margin:0.5rem 0 0;"><strong>Several stereonets on one page.</strong> A project file can be split into panels, like a GMT subplot: put a line giving the panel position — <code>top left</code>, <code>top right</code>, <code>middle left</code>, <code>bottom center</code>… (rows top / middle / bottom, columns left / center / right) — and everything that follows, in the directions and mean-directions blocks alike, goes into that panel until the next position line. A title can follow a colon: <code>top left: North Nangqian</code>. For larger grids, <code>panel 2 4</code> means row 2, column 4. <strong>Plot stereo project</strong> then draws all the panels on one page, each labelled (a), (b)… in reading order, and <strong>Export SVG</strong> writes the whole page. A file without position lines is drawn as a single stereonet, as before.</p></div>
       </div>
       <div class="item">
         <div class="label">Plot VGPs on Map</div>
@@ -659,7 +661,7 @@
         <div class="desc">Exports whichever plot is currently displayed to an SVG file. For <strong>Plot stereo</strong> and <strong>Plot stereo project</strong> specifically, the plot is re-rendered through a dedicated writer, the same SVG output as the former Fortran program, rather than matplotlib's generic exporter:
           <ul style="margin:0.4rem 0 0 1.2rem; padding:0;">
             <li>a continuous trace (a confidence ellipse's 120 segments, for instance) is written as a single <code>&lt;polyline&gt;</code> — one selectable object — instead of matplotlib's one separate path per segment;</li>
-            <li>for <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is additionally wrapped in its own <code>&lt;g id="layer name"&gt;</code>.</li>
+            <li>for <strong>Plot stereo project</strong>, every entry drawn from a given <a href="#project">Project</a> "layer" is additionally wrapped in its own <code>&lt;g id="layer_name"&gt;</code> (spaces become "_"). On a page of several stereonets, each group name starts with the panel letter (<code>a_net</code>, <code>a_title</code>, <code>a_North_Nangqian_red_beds</code>…), so that every stereonet and every layer can be selected on its own in Illustrator or Inkscape.</li>
           </ul>
           Most other plots (K-T, Hysteresis, VGP maps, most of PmagPy-tools…) are shown in the canvas as a reloaded PNG (<code>imshow</code>, since those PmagPy functions draw with their own standalone <code>pyplot</code> calls rather than onto this app's shared <code>Figure</code>) — exporting one of those still writes an SVG file, but its only content is that same bitmap re-encapsulated, not real vector paths. <strong>Predicted field curve...</strong> is an exception: its export rebuilds the plot as vector lines, error bars and fills — a real, scalable SVG rather than an embedded raster.
         </div>
@@ -1056,6 +1058,45 @@ cb0105                    13CB0105_hys  13CB0105  26.3</pre>
       <div class="item">
         <div class="label">PmagPy cross-check</div>
         <div class="desc">After computing a result from any of the three formats, a second, independent estimate from PmagPy's own modern hysteresis pipeline (<code>pmagpy.rockmag.process_hyst_loop</code> — gridding, centering, instrument-drift correction, closure/saturation tests) is shown alongside it: Ms, Bc, χ<sub>HF</sub>, Mr, Brh, plus whether PmagPy's own tests consider the loop closed/saturated. Not a replacement for the native result (a different algorithm) — a sanity check displayed next to it. Silently skipped (with a note) if <code>pmagpy</code> isn't installed.</div>
+      </div>
+    </section>
+
+    <!-- ========================= MPMS ========================= -->
+    <section class="menu" id="mpms">
+      <h2>MPMS <span class="menu-tag">low-temperature remanence (Quantum Design MPMS)</span></h2>
+      <p class="menu-desc">Plots low-temperature remanence curves read directly from MPMS MultiVu <code>.dat</code> files (DC measurements): room-temperature SIRM cooling–warming cycles and warming of a SIRM given at low temperature after zero-field (ZFC) or field cooling (FC).</p>
+
+      <div class="item">
+        <div class="label">Open MPMS .dat File(s)...</div>
+        <div class="desc">Reads one or several <code>.dat</code> files (sample name, mass in mg and sequence name from the header; time, temperature, longitudinal moment and SQUID fit quality from the data). The moment is converted from emu to Am² (1 emu = 10⁻³ Am²). Each file is cut automatically into curves of monotonic temperature: a measured cooling followed by its warming is one cycle; a warming that starts near 10 K after a curve ending warm (cooling not measured) is a low-temperature SIRM, named ZFC then FC in the order measured. The console lists every curve (direction, temperature range, number of points and of outliers, first and last moment). The applied fields (SIRM, FC cooling field) are not stored in <code>.dat</code> files. Opening a file again replaces it; all the curves of the last file opened are plotted.</div>
+      </div>
+      <div class="item">
+        <div class="label">Remove All MPMS Files</div>
+        <div class="desc">Empties the list of loaded files.</div>
+      </div>
+      <div class="item">
+        <div class="label">Curve Names...</div>
+        <div class="desc">Shows the curves of a loaded file with their proposed names, to be changed to the names of the measuring sequence (e.g. <code>RT-SIRM</code>, <code>enh_RT-SIRM</code>, <code>dmg300 ZFC</code>). <strong>Save</strong> writes them to <code>&lt;file&gt;.curves.txt</code> next to the <code>.dat</code> file (one line <code>index&lt;TAB&gt;name</code>); they are read back each time the file is opened.</div>
+      </div>
+      <div class="item">
+        <div class="label">Select Curves to Plot... / Plot MPMS Curves</div>
+        <div class="desc">Tick the curves to plot, from one file or several (to compare a specimen with a heated fragment of the same sample, for instance). Temperature cycles are plotted at the top, low-temperature SIRM warmings (ZFC/FC) below. Colour follows the curve name, the marker the file; filled markers for cooling, open for warming. The Y axis is zoomed on the data; click on the Y axis of a plot to start it at 0, and click again to zoom back.</div>
+      </div>
+      <div class="item">
+        <div class="label">Moment / Mass-normalized / Relative to curve start · Show dM/dT · Hide Outliers</div>
+        <div class="desc">Y axis in Am², in Am²/kg (mass from the file header), or divided by the first point of each curve. <strong>Show dM/dT</strong> adds the derivative under each plot (3-point running mean, then derivative versus temperature). <strong>Hide Outliers</strong> (on by default) leaves out points with a poor SQUID fit (<code>Long Reg Fit</code> below 0.8) and isolated spikes (more than 1.5 % away from the running median of 5 points; along a monotonic stretch that median is the point itself); a real step in a curve, such as the Verwey transition, is kept because its points have neighbours on the same side. The files themselves are never changed.</div>
+      </div>
+      <div class="item">
+        <div class="label">Verwey Estimate (PmagPy, optional)...</div>
+        <div class="desc">Runs PmagPy's <code>rockmag.calc_verwey_estimate</code> on a curve chosen from a drop-down list (with <strong>Previous</strong> and <strong>Next</strong>). Parameters, asked once in the console: background range (default 50–250 K), range excluded from the background fit (75–150 K) and polynomial degree (3). A polynomial is fitted to dM/dT outside the excluded range; the magnetite contribution is the difference between this background and the measurement, and T<sub>V</sub> is taken at its peak. Top: M(T), background and magnetite curves; bottom: dM/dT. The console gives T<sub>V</sub>, the remanence loss and the r² of the background fit. PmagPy returns a temperature even when the curve has no Verwey transition: check that a peak is visible on dM/dT. When the peak falls on the edge of the range, PmagPy gives no value and the console says so.</div>
+      </div>
+      <div class="item">
+        <div class="label">Goethite Removal, numerical (PmagPy, optional)...</div>
+        <div class="desc">Runs PmagPy's <code>rockmag.goethite_removal</code> on a room-temperature SIRM cooling–warming cycle chosen from a drop-down list. Parameters: fit range on the warming curve (default 150–290 K) and polynomial degree (2). The polynomial fitted to the warming curve in that range is attributed entirely to goethite and subtracted from both curves. This is a numerical correction based on an assumed shape: any other mineral whose remanence varies in that range is partly removed with it, and the corrected curve keeps no absolute level. It is not the same as destroying goethite by heating. When a fragment of the same sample is also loaded under the sample name followed by an underscore (e.g. <code>NQ1504_CH400</code> for <code>NQ1504</code>), its corresponding cycle is shown in a third panel for comparison.</div>
+      </div>
+      <div class="item">
+        <div class="label">Export MPMS to MagIC...</div>
+        <div class="desc">Writes the loaded <code>.dat</code> files to one MagIC file with a <code>specimens</code> and a <code>measurements</code> table. The link file → specimen → sample goes through a correspondence table (<code>file specimen sample mass_mg description</code>, tab-separated), as for the hysteresis export: the program can write one pre-filled from the MultiVu sample names (sample of the study's <code>.prmag</code>, with or without its 2-digit year prefix; specimen = sample + rest of the name + <code>_mpms</code>, e.g. <code>XX1504_mpms</code>, <code>XX1504_CH400_mpms</code>). Files with the same MultiVu sample name and mass get the same specimen (one fragment measured in several sessions); <code>mass_mg</code> overrides the mass of the file header; <code>description</code> goes to <code>specimens.description</code> (a name containing <code>CH</code> + 3 digits is pre-filled as heated to that temperature before the measurements). Each curve becomes one experiment: room-temperature SIRM cooling <code>LP-CW-SIRM:LP-MC</code> and warming <code>LP-CW-SIRM:LP-MW</code>, low-temperature SIRM warming <code>LP-ZFC</code> or <code>LP-FC</code> according to the curve name (a low-temperature curve whose name contains neither ZFC nor FC is not exported and is reported) — the codes PmagPy's <code>rockmag</code> module reads. Columns: <code>meas_temp</code> (K), <code>meas_field_dc</code> 0, <code>treat_dc_field</code> the SIRM field (asked, default 2.5 T, since <code>.dat</code> files do not store it), <code>magn_moment</code> (Am²) and <code>magn_mass</code> (Am²/kg), <code>timestamp</code>, the curve name in <code>description</code>. Outliers (see <strong>Hide Outliers</strong>) are kept with <code>quality</code> <code>b</code> unless you answer no. Add the file in STARpaleomag_Py, <code>export to Magic database</code>, to merge it with the paleomag contribution.</div>
       </div>
     </section>
 

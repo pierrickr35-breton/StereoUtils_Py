@@ -360,6 +360,7 @@ def draw_project(
     la: float = -90.0,
     phi: float = 0.0,
     iproj: int = 0,
+    gid_prefix: str = "",
 ) -> None:
     """Port de la boucle de trace de `plotproject` (plotstereo.f95:107-231)
     pour les 3 types d'entree ('m'/'g'/'d'), couleur RGB individuelle par
@@ -380,7 +381,7 @@ def draw_project(
             # qui gardait les calques") : voir PlotContext.set_gid pour le
             # detail du mecanisme (Artist.set_gid plutot que reecrire
             # </g>/<g id=...> a la main).
-            ctx.set_gid(layer0)
+            ctx.set_gid(gid_prefix + layer0)
         ir, ig, ib = decode_color(e.rgb)
         ctx.newpencol(ir, ig, ib, ir, ig, ib)
         if e.type == "m":
@@ -490,5 +491,215 @@ def build_project_svg(
     writer.plot(7.4, 10.6, -3)
     r = draw_stereo_net(writer, la, phi, iproj, dim)
     draw_project(writer, entries, r, la, phi, iproj)
+    writer.plotnd()
+    return writer
+
+
+# ---------------------------------------------------------------------------
+# Figure a plusieurs stereos (cases), a la maniere de `gmt subplot`
+# ---------------------------------------------------------------------------
+# Demande explicite utilisateur ("organiser le projet en mettant plusieurs
+# stereo sur un seul graphique a la maniere de GMT avec ses subplots") : les
+# cases sont marquees DANS le fichier projet par une ligne libre donnant la
+# position ("top left", "Top right", "middle left", "bottom right"...,
+# exemple de l'utilisateur test_Proj.txt), suivie eventuellement d'un titre
+# apres ":" ("top left: North Nangqian"). Tout ce qui suit un marqueur, dans
+# n'importe quel bloc (directions, moyennes), va dans cette case jusqu'au
+# marqueur suivant. Un fichier sans marqueur reste un stereo unique.
+
+_ROW_WORDS = {"top": 0, "upper": 0, "middle": 1, "center": 1, "centre": 1, "bottom": 2, "lower": 2}
+_COL_WORDS = {"left": 0, "center": 1, "centre": 1, "middle": 1, "right": 2}
+
+
+class Panel(NamedTuple):
+    row: int            # rang de la ligne (0 = haut), apres compactage
+    col: int            # rang de la colonne (0 = gauche), apres compactage
+    label: str          # lettre de case "a", "b"... (ordre de lecture)
+    title: str          # texte apres ":" sur la ligne marqueur ("" sinon)
+    entries: List[ProjectEntry]
+
+
+def panel_marker(line: str) -> Optional[Tuple[int, int, str]]:
+    """(ligne, colonne, titre) si `line` est un marqueur de case ("top left",
+    "bottom right: titre", "panel 2 3: titre"...), sinon None. Ligne et
+    colonne sont des rangs bruts (top/middle/bottom = 0/1/2, left/center/
+    right = 0/1/2 ; "panel r c" = rangs donnes, a partir de 1)."""
+    s = line.strip()
+    if not s or s[0] in "#!":
+        return None
+    head, _sep, title = s.partition(":")
+    words = head.lower().split()
+    if not words or len(words) > 3:
+        return None
+    if words[0] == "panel" and len(words) == 3 and all(w.isdigit() for w in words[1:]):
+        return int(words[1]) - 1, int(words[2]) - 1, title.strip()
+    if len(words) == 2 and words[0] in _ROW_WORDS and words[1] in _COL_WORDS:
+        return _ROW_WORDS[words[0]], _COL_WORDS[words[1]], title.strip()
+    if len(words) == 2 and words[0] in _COL_WORDS and words[1] in _ROW_WORDS and \
+            words[0] not in _ROW_WORDS:
+        return _ROW_WORDS[words[1]], _COL_WORDS[words[0]], title.strip()
+    if len(words) == 1 and words[0] in ("left", "right"):
+        return 1, _COL_WORDS[words[0]], title.strip()
+    if len(words) == 1 and words[0] in ("top", "bottom", "upper", "lower"):
+        return _ROW_WORDS[words[0]], 1, title.strip()
+    return None
+
+
+def load_project_panels(path: str) -> List[Panel]:
+    """Cases d'un fichier projet a marqueurs (voir panel_marker) - [] si le
+    fichier n'en contient aucun (stereo unique, comportement inchange).
+    Fichier a blocs ("# individual directions" / "# mean directions",
+    chacun avec son en-tete de colonnes) ou ancien format a plat."""
+    lines = _read_text_lines(path)
+    marks = [(k, panel_marker(ln)) for k, ln in enumerate(lines)]
+    if not any(m for _k, m in marks):
+        return []
+    blocked = bool(_split_project_blocks(lines))
+    order: List[Tuple[int, int, str]] = []          # cases dans l'ordre du fichier
+    content: Dict[Tuple[int, int], Dict[str, List[str]]] = {}
+    headers: Dict[str, str] = {}
+    current_block: Optional[str] = None
+    want_header = False
+    cur: Optional[Tuple[int, int]] = None
+    for line, (_k, mark) in zip(lines, marks):
+        stripped = line.strip()
+        if mark is not None:
+            cur = (mark[0], mark[1])
+            if cur not in content:
+                content[cur] = {}
+                order.append((mark[0], mark[1], mark[2]))
+            elif mark[2]:
+                order = [(r, c, mark[2]) if (r, c) == cur else (r, c, t) for r, c, t in order]
+            continue
+        if stripped.startswith("#"):
+            low = stripped.lstrip("#").strip().lower()
+            key = next((v for pat, v in _BLOCK_MARKERS.items() if pat in low), None)
+            if key is not None:
+                current_block, want_header = key, True
+                continue
+            if want_header and current_block is not None:
+                headers[current_block] = line
+                want_header = False
+            continue
+        if not stripped or cur is None:
+            continue
+        block = current_block if blocked else "flat"
+        if block in (None, "vgp"):
+            continue
+        content[cur].setdefault(block, []).append(line)
+    rows = sorted({r for r, _c, _t in order})
+    cols = sorted({c for _r, c, _t in order})
+    panels = []
+    reading = sorted(order, key=lambda o: (o[0], o[1]))
+    for n, (r, c, title) in enumerate(reading):
+        blocks = content[(r, c)]
+        entries: List[ProjectEntry] = []
+        if blocked:
+            for block, mean_type in (("directions", None), ("means", "m")):
+                if block in blocks:
+                    hdr = headers.get(block)
+                    body = ([hdr] if hdr else []) + blocks[block]
+                    entries += _parse_direction_block(body, mean_type=mean_type)
+        else:
+            entries = _parse_flat_lines(blocks.get("flat", []))
+        panels.append(Panel(rows.index(r), cols.index(c), "abcdefghijklmnopqrstuvwxyz"[n % 26],
+                            title, entries))
+    return panels
+
+
+def _parse_flat_lines(lines: Sequence[str]) -> List[ProjectEntry]:
+    """Meme lecture que load_project, sur une liste de lignes."""
+    entries = []
+    for line in lines:
+        parts = line.strip().split()
+        if len(parts) < 10:
+            continue
+        try:
+            layer, eid, etype = parts[0], parts[1], parts[2]
+            dec, inc, alph = float(parts[3]), float(parts[4]), float(parts[5])
+            iplot = int(float(parts[6]))
+            symb, rgb, size = parts[7], parts[8], float(parts[9])
+        except ValueError:
+            continue
+        if alph == 0.0:
+            etype = "d"
+        entries.append(ProjectEntry(layer, eid, etype, dec, inc, alph, iplot, symb, rgb, size))
+    return entries
+
+
+# Mise en page (cm) : diametre de chaque stereo, marges autour (lettres
+# N/E/S/W, lettre de case, titre), comme une page GMT.
+PANEL_DIM = 10.5        # `dim` de draw_stereo_net -> rayon dim/3 = 3.5 cm
+PANEL_GAP = 1.6         # espace entre deux stereos (cm)
+PANEL_TOP = 1.4         # place au-dessus du cercle pour la lettre et le titre
+PAGE_MARGIN = 1.0
+
+
+def panels_page_size(panels: Sequence[Panel], dim: float = PANEL_DIM) -> Tuple[float, float, float, float]:
+    """(largeur, hauteur, pas horizontal, pas vertical) de la page en cm."""
+    r = dim / 3.0
+    nrows = max(p.row for p in panels) + 1
+    ncols = max(p.col for p in panels) + 1
+    step_x = 2 * r + PANEL_GAP
+    step_y = 2 * r + PANEL_GAP + PANEL_TOP
+    return (2 * PAGE_MARGIN + ncols * step_x - PANEL_GAP,
+            2 * PAGE_MARGIN + nrows * step_y - PANEL_GAP, step_x, step_y)
+
+
+def draw_panels(ctx, panels: Sequence[Panel], la: float = -90.0, phi: float = 0.0,
+                iproj: int = 0, dim: float = PANEL_DIM, page_height: Optional[float] = None) -> None:
+    """Toutes les cases sur une page : origine deplacee au centre de chaque
+    stereo (`plot(x, y, -3)` depuis l'origine de page, coin bas-gauche),
+    reseau, lettre "(a)", titre, puis les entrees (calques prefixes par la
+    lettre de case : "a_North Nangqian extrusives"...)."""
+    r = dim / 3.0
+    width, height, step_x, step_y = panels_page_size(panels, dim)
+    page_h = page_height if page_height is not None else height
+    for p in panels:
+        cx = PAGE_MARGIN + r + p.col * step_x
+        cy = page_h - PAGE_MARGIN - PANEL_TOP - r - p.row * step_y
+        ctx.plot(0.0, 0.0, -4)
+        ctx.plot(cx, cy, -3)
+        ctx.set_gid(f"{p.label}_net")
+        draw_stereo_net(ctx, la, phi, iproj, dim)
+        ctx.set_gid(f"{p.label}_title")
+        ctx.newpen(1)
+        ctx.plottxt(-r - 0.4, r + 0.75, 0.42, f"({p.label})")
+        if p.title:
+            ctx.plottxt(-r + 0.8, r + 0.75, 0.36, p.title)
+        draw_project(ctx, p.entries, r, la, phi, iproj, gid_prefix=f"{p.label}_")
+    ctx.plot(0.0, 0.0, -4)
+
+
+def build_panels_figure(panels: Sequence[Panel], la: float = -90.0, phi: float = 0.0,
+                        iproj: int = 0, dim: float = PANEL_DIM, fig=None):
+    """Ecran (matplotlib) : la page entiere dans un seul Axes, en cm."""
+    from matplotlib.figure import Figure
+    width, height, _sx, _sy = panels_page_size(panels, dim)
+    if fig is None:
+        fig = Figure(figsize=(width / 2.54, height / 2.54), dpi=100)
+    else:
+        fig.clear()
+    ax = fig.add_subplot(111)
+    ctx = PlotContext(ax)
+    ctx.clear()
+    draw_panels(ctx, panels, la, phi, iproj, dim, page_height=height)
+    ax.set_xlim(0, width / 2.54)
+    ax.set_ylim(0, height / 2.54)
+    ax.set_aspect("equal")
+    ax.axis("off")
+    fig.tight_layout()
+    return fig
+
+
+def build_panels_svg(panels: Sequence[Panel], la: float = -90.0, phi: float = 0.0,
+                     iproj: int = 0, dim: float = PANEL_DIM):
+    """SVG de la page (meme rendu que build_project_svg : polylignes uniques,
+    un groupe <g id> par calque, prefixe par la lettre de case)."""
+    from svgwriter import SVGWriter
+    width, height, _sx, _sy = panels_page_size(panels, dim)
+    writer = SVGWriter(width_cm=width, height_cm=height)
+    writer.set_origin_px(0.0, height / 2.54 * writer.SCRDPI)
+    draw_panels(writer, panels, la, phi, iproj, dim, page_height=height)
     writer.plotnd()
     return writer

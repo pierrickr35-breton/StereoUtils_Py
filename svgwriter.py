@@ -339,7 +339,24 @@ class SVGWriter:
         un `</g>` surnumeraire (SVG invalide)."""
         self._close_polyline()
         self._lines.append("</g>")
-        self._lines.append(f'<g id="{gid}">' if gid else '<g id="layerpmag0">')
+        self._lines.append(f'<g id="{self._unique_id(gid)}">' if gid else '<g id="layerpmag0">')
+
+    def _unique_id(self, gid: str) -> str:
+        """Valid, unique XML id: spaces -> "_" (layer names such as
+        "North Nangqian red beds"), XML specials removed, and "_2", "_3"...
+        when a layer name comes back later in the drawing (two groups with
+        the same id are invalid SVG)."""
+        import re
+        base = re.sub(r"\s+", "_", gid.strip())
+        base = re.sub(r'[<>&"\']', "", base) or "layer"
+        if not hasattr(self, "_used_ids"):
+            self._used_ids = set()
+        out, k = base, 1
+        while out in self._used_ids:
+            k += 1
+            out = f"{base}_{k}"
+        self._used_ids.add(out)
+        return out
 
     def plotnd(self) -> None:
         """Equivalent partiel du mode 999 (fin de trace) : ferme toute

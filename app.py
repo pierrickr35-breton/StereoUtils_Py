@@ -64,6 +64,8 @@ from hyst_magic import (
 from kt_magic import read_prmag_samples
 from day_table import read_day_table
 import magic_rockmag_view as mrv
+import mpms_lowt
+import mpms_magic
 from curie_hyst import (
     read_agm_file, read_agm_sample_list, read_vsm_csv, read_vsm_sample_list,
     vsm_paths_for, read_vftb_file, compute_hysteresis, format_hysteresis_result,
@@ -146,6 +148,7 @@ class StereoUtilsApp:
         self.means = []          # List[(dec, inc, alpha95, symbol)] - common /data/ dic/inc/alph (im)
         self.great_circles = []  # List[(glon, glat, ad1, ai1, ad2, ai2)] - common /data/ glon/glat/... (imm)
         self.project_entries = []  # List[ProjectEntry] - common /dataplot/ plotdir (nbdata)
+        self.project_panels = []   # cases d'une figure a plusieurs stereos (Load Project)
         self.project_vgp_entries = []  # List[VgpProjectEntry] - bloc "# VGP" du dernier Load Project
         self._current_graphic = None
         self._last_image_files = []
@@ -183,6 +186,16 @@ class StereoUtilsApp:
         self._sample_pick_window = None  # menu deroulant des echantillons, voir _pick_sample
         self.hyst_normalize = tk.BooleanVar(value=False)  # demande explicite "normalize each plot"
         self.hyst_max_field = None    # None = auto ; sinon borne X explicite (Tesla)
+
+        # MPMS basse temperature (mpms_lowt.py) : fichiers .dat MultiVu
+        # charges, courbes cochees pour le trace (paires (i_fichier,
+        # i_courbe)), unite et derivee.
+        self.mpms_files = []
+        self.mpms_selection = []
+        self.mpms_unit = tk.StringVar(value="mass")
+        self.mpms_derivative = tk.BooleanVar(value=False)
+        self.mpms_hide_outliers = tk.BooleanVar(value=True)
+        self.mpms_y_from_zero = set()  # familles ("cycles"/"lowt") dont l'axe Y part de 0
 
         # Site Map (site_map.py) - demande explicite utilisateur ("is
         # there a possibility to have a basic map too" dans la version
@@ -581,7 +594,10 @@ class StereoUtilsApp:
         if not path:
             return
         try:
-            if self._project_svg_state is not None:
+            if self._project_svg_state is not None and self._project_svg_state[0] == "panels":
+                _k, panels, la, phi, iproj = self._project_svg_state
+                sproj.build_panels_svg(panels, la=la, phi=phi, iproj=iproj).save(path)
+            elif self._project_svg_state is not None:
                 entries, la, phi, iproj, dim = self._project_svg_state
                 sproj.build_project_svg(entries, la=la, phi=phi, iproj=iproj, dim=dim).save(path)
             elif self._stereo_svg_state is not None:
@@ -964,6 +980,40 @@ class StereoUtilsApp:
         hyst_menu.add_command(
             label="MagIC Day Plot (PmagPy)", command=self._menu_cmd("hysteresis", self.hyst_magic_day_plot))
         menubar.add_cascade(label="Hysteresis", menu=hyst_menu)
+
+        mpms_menu = tk.Menu(menubar, tearoff=0)
+        mpms_menu.add_command(
+            label="Open MPMS .dat File(s)...", command=self._menu_cmd("mpms", self.mpms_open_files))
+        mpms_menu.add_command(
+            label="Remove All MPMS Files", command=self._menu_cmd("mpms", self.mpms_clear))
+        mpms_menu.add_command(label="Curve Names...", command=self._menu_cmd("mpms", self.mpms_curve_names))
+        mpms_menu.add_separator()
+        mpms_menu.add_command(
+            label="Select Curves to Plot...", command=self._menu_cmd("mpms", self.mpms_select_curves))
+        mpms_menu.add_command(label="Plot MPMS Curves", command=self._menu_cmd("mpms", self.mpms_plot))
+        mpms_menu.add_separator()
+        for value, text in (("moment", "Moment (Am²)"), ("mass", "Mass-normalized (Am²/kg)"),
+                            ("relative", "Relative to curve start (M/M0)")):
+            mpms_menu.add_radiobutton(
+                label=text, variable=self.mpms_unit, value=value,
+                command=self._menu_cmd("mpms", self._mpms_replot))
+        mpms_menu.add_checkbutton(
+            label="Show dM/dT", variable=self.mpms_derivative,
+            command=self._menu_cmd("mpms", self._mpms_replot))
+        mpms_menu.add_checkbutton(
+            label="Hide Outliers (bad SQUID fit, isolated spike)", variable=self.mpms_hide_outliers,
+            command=self._menu_cmd("mpms", self._mpms_replot))
+        mpms_menu.add_separator()
+        mpms_menu.add_command(
+            label="Verwey Estimate (PmagPy, optional)...",
+            command=self._menu_cmd("mpms", self.mpms_verwey_pmagpy))
+        mpms_menu.add_command(
+            label="Goethite Removal, numerical (PmagPy, optional)...",
+            command=self._menu_cmd("mpms", self.mpms_goethite_pmagpy))
+        mpms_menu.add_separator()
+        mpms_menu.add_command(
+            label="Export MPMS to MagIC...", command=self._menu_cmd("mpms", self.mpms_export_magic))
+        menubar.add_cascade(label="MPMS", menu=mpms_menu)
 
         help_menu = tk.Menu(menubar, tearoff=0)
         help_menu.add_command(label="User Guide", command=self.ouvrir_user_guide)
@@ -1594,7 +1644,13 @@ class StereoUtilsApp:
         if not path:
             return
         self.project_entries, self.project_vgp_entries = sproj.load_project_blocks(path)
+        # cases "top left", "bottom right"... (figure a plusieurs stereos)
+        self.project_panels = sproj.load_project_panels(path)
         msg = f"{len(self.project_entries)} project entrie(s) loaded from {os.path.basename(path)}"
+        if self.project_panels:
+            msg += (f"; {len(self.project_panels)} panels ("
+                    + ", ".join(f"({p.label}) {len(p.entries)}" for p in self.project_panels)
+                    + ") - Plot Project draws them on one page")
         if self.project_vgp_entries:
             msg += f" ({len(self.project_vgp_entries)} VGP entrie(s) also available - see Plot VGP Project...)"
         self._afficher(msg + "\n")
@@ -1606,6 +1662,7 @@ class StereoUtilsApp:
         le source qui reinitialise `i=0`), affiche au format pret-a-copier
         et propose de l'enregistrer dans un fichier."""
         self.project_entries = sproj.export_project(self.directions, self.means, self.great_circles)
+        self.project_panels = []
         text = sproj.format_project_lines(self.project_entries)
         self._afficher("-------\n" + text + "-------\ncopy these lines to a project file and edit with a text editor\n")
         if not self.project_entries:
@@ -1630,6 +1687,7 @@ class StereoUtilsApp:
         """Equivalent de `initproject`/`initdataproject` (Project > Init
         Project)."""
         self.project_entries = []
+        self.project_panels = []
         self._afficher("project cleared\n")
 
     def plot_project(self):
@@ -1642,6 +1700,15 @@ class StereoUtilsApp:
             return
         self.clear_screen()
         self._last_image_files = []
+        panels = getattr(self, "project_panels", None)
+        if panels:
+            # plusieurs stereos sur une page (cases du fichier projet)
+            sproj.build_panels_figure(panels, la=self.la, phi=self.phi, iproj=self.iproj, fig=self.fig)
+            if self.graph_title:
+                self.fig.suptitle(self.graph_title)
+            self._redraw_canvas()
+            self._project_svg_state = ("panels", list(panels), self.la, self.phi, self.iproj)
+            return
         sproj.build_project_figure(
             self.project_entries, la=self.la, phi=self.phi, iproj=self.iproj,
             dim=self.dim, fig=self.fig,
@@ -4073,6 +4140,332 @@ class StereoUtilsApp:
             f"measurements, {n_spec} specimen rows\n")
         return data
 
+    # ------------------------------------------------------------------
+    # MPMS basse temperature (mpms_lowt.py) - demande explicite
+    # utilisateur (menu de visualisation des mesures MPMS).
+    # ------------------------------------------------------------------
+
+    def mpms_open_files(self):
+        paths = filedialog.askopenfilenames(
+            title="Open MPMS .dat File(s)",
+            filetypes=[("MPMS MultiVu data", "*.dat *.DAT"), ("All files", "*.*")])
+        if not paths:
+            return
+        for path in paths:
+            try:
+                mf = mpms_lowt.read_mpms_dat(path)
+            except (OSError, ValueError) as e:
+                messagebox.showerror("Error", str(e))
+                continue
+            known = [i for i, f in enumerate(self.mpms_files) if f.path == path]
+            if known:
+                self.mpms_files[known[0]] = mf
+                i = known[0]
+            else:
+                self.mpms_files.append(mf)
+                i = len(self.mpms_files) - 1
+            self.mpms_selection = [(fi, ci) for fi, ci in self.mpms_selection if fi != i]
+            self._afficher(mpms_lowt.format_summary(mf))
+        # dernier fichier ouvert : toutes ses courbes cochees
+        self.mpms_selection = [(i, k) for k in range(len(self.mpms_files[i].curves))]
+        self.mpms_plot()
+
+    def mpms_clear(self):
+        self.mpms_files = []
+        self.mpms_selection = []
+        self._afficher("MPMS files removed.\n")
+
+    def _mpms_need_files(self):
+        if not self.mpms_files:
+            messagebox.showwarning("No MPMS file", "Open an MPMS .dat file first.")
+            return False
+        return True
+
+    def mpms_curve_names(self):
+        """Noms des courbes d'un fichier (proposes automatiquement),
+        modifiables et gardes dans <fichier>.curves.txt."""
+        if not self._mpms_need_files():
+            return
+        top = tk.Toplevel(self.root)
+        top.title("MPMS curve names")
+        top.transient(self.root)
+        labels = [f"{mf.name}  -  {mf.label}" for mf in self.mpms_files]
+        box = ttk.Combobox(top, state="readonly", width=60, values=labels)
+        box.pack(fill=tk.X, padx=8, pady=8)
+        table = ttk.Frame(top)
+        table.pack(fill=tk.BOTH, expand=True, padx=8)
+        entries = []
+
+        def show(_e=None):
+            for w in table.winfo_children():
+                w.destroy()
+            entries.clear()
+            mf = self.mpms_files[box.current()]
+            for c in mf.curves:
+                r = c.index - 1
+                ttk.Label(table, text=f"{c.index:2d}  {c.kind:7s} {c.t_start:5.0f} → {c.t_end:5.0f} K",
+                          font=("Courier", 12)).grid(row=r, column=0, sticky="w")
+                v = tk.StringVar(value=c.name)
+                ttk.Entry(table, textvariable=v, width=36).grid(row=r, column=1, sticky="ew", pady=1)
+                entries.append(v)
+
+        def save():
+            mf = self.mpms_files[box.current()]
+            for c, v in zip(mf.curves, entries):
+                c.name = v.get().strip() or c.name
+            try:
+                mpms_lowt.save_names(mf)
+            except OSError as e:
+                messagebox.showerror("Error", str(e))
+                return
+            self._afficher(f"curve names saved to {os.path.basename(mpms_lowt.names_path(mf))}\n")
+            self._mpms_replot()
+
+        btns = ttk.Frame(top)
+        btns.pack(fill=tk.X, padx=8, pady=8)
+        ttk.Button(btns, text="Save", command=save).pack(side=tk.LEFT)
+        ttk.Button(btns, text="Close", command=top.destroy).pack(side=tk.RIGHT)
+        box.bind("<<ComboboxSelected>>", show)
+        box.current(len(self.mpms_files) - 1)
+        show()
+
+    def mpms_select_curves(self):
+        """Cases a cocher : toutes les courbes de tous les fichiers charges
+        (pour superposer par ex. un echantillon et son fragment chauffe)."""
+        if not self._mpms_need_files():
+            return
+        top = tk.Toplevel(self.root)
+        top.title("MPMS curves to plot")
+        top.transient(self.root)
+        frame = ttk.Frame(top)
+        frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        chosen = set(self.mpms_selection)
+        vars_ = {}
+        col = 0
+        for fi, mf in enumerate(self.mpms_files):
+            ttk.Label(frame, text=mf.name, font=("Helvetica", 12, "bold")).grid(
+                row=0, column=col, sticky="w", padx=6)
+            for ci, c in enumerate(mf.curves):
+                v = tk.BooleanVar(value=(fi, ci) in chosen)
+                ttk.Checkbutton(frame, text=c.name, variable=v).grid(
+                    row=ci + 1, column=col, sticky="w", padx=6)
+                vars_[(fi, ci)] = v
+            col += 1
+
+        def set_all(value):
+            for v in vars_.values():
+                v.set(value)
+
+        def plot():
+            self.mpms_selection = [k for k, v in vars_.items() if v.get()]
+            self.mpms_plot()
+
+        btns = ttk.Frame(top)
+        btns.pack(fill=tk.X, padx=8, pady=(0, 8))
+        ttk.Button(btns, text="All", command=lambda: set_all(True)).pack(side=tk.LEFT)
+        ttk.Button(btns, text="None", command=lambda: set_all(False)).pack(side=tk.LEFT, padx=4)
+        ttk.Button(btns, text="Close", command=top.destroy).pack(side=tk.RIGHT)
+        ttk.Button(btns, text="Plot", command=plot).pack(side=tk.RIGHT, padx=4)
+
+    def mpms_plot(self):
+        if not self._mpms_need_files():
+            return
+        sel = [(self.mpms_files[fi], self.mpms_files[fi].curves[ci])
+               for fi, ci in self.mpms_selection
+               if fi < len(self.mpms_files) and ci < len(self.mpms_files[fi].curves)]
+        if not sel:
+            messagebox.showwarning("No curve", "No curve selected (Select Curves to Plot...).")
+            return
+        self.clear_screen()
+        nrow = len({mpms_lowt._is_lowt_sirm(c) for _mf, c in sel}) * (2 if self.mpms_derivative.get() else 1)
+        self.fig.set_size_inches(6.0, 3.2 * nrow, forward=True)
+        mpms_lowt.build_mpms_figure(
+            sel, unit=self.mpms_unit.get(), show_derivative=self.mpms_derivative.get(), fig=self.fig,
+            hide_outliers=self.mpms_hide_outliers.get(), y_from_zero=self.mpms_y_from_zero)
+        self._redraw_canvas()
+
+    def _mpms_params(self, prompt, default):
+        s = self._console_input(prompt, default)
+        if s is None:
+            return None
+        try:
+            return [float(x) for x in s.replace(",", " ").split()]
+        except ValueError:
+            messagebox.showerror("Error", f"Numbers expected: {s}")
+            return None
+
+    def mpms_verwey_pmagpy(self):
+        """Option : rockmag.calc_verwey_estimate (PmagPy) sur une courbe au
+        choix (menu deroulant, Previous/Next)."""
+        if not self._mpms_need_files():
+            return
+        v = self._mpms_params(
+            "Verwey (PmagPy) - background range min max (K), excluded min max (K), "
+            "polynomial degree: ", "50 250 75 150 3")
+        if v is None or len(v) != 5:
+            return
+        items = [(mf, c) for mf in self.mpms_files for c in mf.curves]
+        labels = [f"{mf.name}  -  {c.name}" for mf, c in items]
+        for i in self._pick_sample("Verwey estimate (PmagPy)", labels):
+            mf, c = items[i]
+            self.clear_screen()
+            self.fig.set_size_inches(6.0, 7.0, forward=True)
+            try:
+                res, _f = mpms_lowt.verwey_pmagpy(
+                    mf, c, v[0], v[1], v[2], v[3], int(v[4]),
+                    hide_outliers=self.mpms_hide_outliers.get(), fig=self.fig)
+            except Exception as e:  # erreurs internes de PmagPy
+                self._afficher(f"[Verwey] {e}\n")
+                self._redraw_canvas()
+                continue
+            self._afficher(
+                f"[Verwey, PmagPy] {mf.name} - {c.name}: T_V = {res.tv:.1f} K, "
+                f"remanence loss = {res.remanence_loss:.3e}, background fit r² = {res.r_squared:.3f}"
+                "  (PmagPy always returns a value: check that a peak is visible on dM/dT)\n")
+            self._redraw_canvas()
+
+    def mpms_goethite_pmagpy(self):
+        """Option : rockmag.goethite_removal (PmagPy), correction NUMERIQUE
+        d'un cycle RT-SIRM ; un fichier charge nomme <echantillon>_xxx (ex.
+        NQ1504_CH400, fragment chauffe) est montre en dessous pour
+        comparaison."""
+        if not self._mpms_need_files():
+            return
+        v = self._mpms_params(
+            "Goethite removal (PmagPy) - polynomial fit range on RT-SIRM warming min max (K), "
+            "degree: ", "150 290 2")
+        if v is None or len(v) != 3:
+            return
+        items = []
+        for mf in self.mpms_files:
+            for k, (cool, warm) in enumerate(mpms_lowt.rtsirm_cycles(mf)):
+                items.append((mf, k, cool, warm))
+        if not items:
+            messagebox.showwarning("No RT-SIRM cycle", "No cooling-warming cycle in the loaded files.")
+            return
+        labels = [f"{mf.name}  -  {cool.name} / {warm.name}" for mf, _k, cool, warm in items]
+        for i in self._pick_sample("Goethite removal (PmagPy)", labels):
+            mf, k, cool, warm = items[i]
+            heated = []
+            for other in self.mpms_files:
+                if other is not mf and other.name.startswith(mf.name + "_"):
+                    cyc = mpms_lowt.rtsirm_cycles(other)
+                    if k < len(cyc):
+                        heated.append((other, cyc[k][0], cyc[k][1]))
+            self.clear_screen()
+            self.fig.set_size_inches(6.0, 8.0 if heated else 6.0, forward=True)
+            try:
+                mpms_lowt.goethite_pmagpy(
+                    mf, cool, warm, v[0], v[1], int(v[2]),
+                    hide_outliers=self.mpms_hide_outliers.get(), heated=heated, fig=self.fig)
+            except Exception as e:
+                self._afficher(f"[Goethite] {e}\n")
+                self._redraw_canvas()
+                continue
+            self._afficher(
+                f"[Goethite, PmagPy] {mf.name} - {cool.name} / {warm.name}: polynomial of degree "
+                f"{int(v[2])} fitted on warming {v[0]:g}-{v[1]:g} K, subtracted from both curves "
+                "(numerical correction)"
+                + (f"; heated fragment shown: {', '.join(h[0].name for h in heated)}" if heated else "")
+                + "\n")
+            self._redraw_canvas()
+
+    def mpms_export_magic(self):
+        """Fichiers MPMS charges -> fichier MagIC (specimens + measurements),
+        via une table de correspondance fichier -> specimen -> echantillon
+        du .prmag (meme principe que Hysteresis > Export) - voir
+        mpms_magic.py."""
+        if not self._mpms_need_files():
+            return
+        prmags = filedialog.askopenfilenames(
+            title="Paleomag .prmag of the study",
+            filetypes=[("STARpaleomag data", "*.prmag"), ("All files", "*.*")])
+        if not prmags:
+            return
+        data_dir = os.path.dirname(self.mpms_files[0].path)
+        ans = self._console_input(
+            "Correspondence table file -> specimen -> sample: (o)pen an existing table, "
+            "or (c)reate one pre-filled from the file names [c]: ", "c")
+        if ans is None:
+            return
+        if ans.strip().lower().startswith("o"):
+            tpath = filedialog.askopenfilename(
+                title="Correspondence table (file, specimen, sample [, mass_mg, description])",
+                initialdir=data_dir, filetypes=[("Text", "*.txt"), ("All files", "*.*")])
+            if not tpath:
+                return
+        else:
+            tpath = filedialog.asksaveasfilename(
+                title="Save the pre-filled correspondence table", initialdir=data_dir,
+                initialfile="MPMS_MagIC_correspondence.txt", defaultextension=".txt",
+                filetypes=[("Text", "*.txt")])
+            if not tpath:
+                return
+            samples = {}
+            for p in prmags:
+                samples.update(read_prmag_samples(p))
+            n_ok, n_bad = mpms_magic.write_template(tpath, self.mpms_files, samples)
+            self._afficher(
+                f"Correspondence table written: {tpath}\n"
+                f"  {n_ok} file(s) matched automatically, {n_bad} with '?' (no sample of the .prmag found).\n"
+                "  Columns: file, specimen, sample (must be a sample of the .prmag), mass_mg (optional),\n"
+                "  description (written to specimens.description). Files of the same MultiVu sample name\n"
+                "  and mass get the same specimen. Check it, replace each '?' or delete a line.\n")
+            if n_bad:
+                self._afficher("  Edit the table, then run the export again and choose (o)pen.\n")
+                return
+            go = self._console_input("All files matched. Export now with this table (not edited)? y/N: ", "N")
+            if go is None or go.strip().lower() != "y":
+                self._afficher("  Edit the table if needed, then run the export again and choose (o)pen.\n")
+                return
+        try:
+            table = mpms_magic.read_table(tpath)
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", str(e))
+            return
+        f = self._mpms_params("SIRM field (T), not stored in the .dat files: ",
+                              f"{mpms_magic.DEFAULT_SIRM_FIELD_T:g}")
+        if f is None or len(f) != 1:
+            return
+        flag = self._console_input(
+            "Flag outliers (bad SQUID fit, isolated spike) as quality 'b'? Y/n: ", "Y")
+        if flag is None:
+            return
+        instrument = self._console_input("Instrument: ", mpms_magic.DEFAULT_INSTRUMENT)
+        if instrument is None:
+            return
+        analysts = self._console_input("Analysts' names (separated by ':'): ", "")
+        if analysts is None:
+            return
+        stem = os.path.splitext(os.path.basename(prmags[0]))[0]
+        out_path = filedialog.asksaveasfilename(
+            title="MagIC MPMS file", defaultextension=".txt", initialdir=os.path.dirname(prmags[0]),
+            initialfile=f"{stem}_MPMS_MagIC.txt", filetypes=[("MagIC text", "*.txt")])
+        if not out_path:
+            return
+        try:
+            specimens, measurements, report = mpms_magic.export_mpms_magic(
+                self.mpms_files, out_path, list(prmags), table, sirm_field_t=f[0],
+                flag_outliers=flag.strip().lower() != "n", instrument=instrument.strip(),
+                analysts=analysts.strip())
+        except (OSError, ValueError) as e:
+            messagebox.showerror("Error", f"MagIC export failed (nothing written):\n{e}")
+            return
+        n_bad = sum(1 for m in measurements if m["quality"] == "b")
+        n_exp = len({m["experiment"] for m in measurements})
+        msg = (f"MagIC MPMS export (table {os.path.basename(tpath)}): {len(specimens)} specimen(s), "
+               f"{n_exp} curve(s), {len(measurements)} measurement(s) ({n_bad} flagged 'b'), "
+               f"SIRM field {f[0]:g} T -> {out_path}\n")
+        if report:
+            msg += "  " + "\n  ".join(report) + "\n"
+        msg += ("Add this file in STARpaleomag_Py, File > export to Magic database "
+                "(question \"Add rock-magnetic data\").\n")
+        self._afficher(msg)
+
+    def _mpms_replot(self):
+        if self.mpms_files and self.mpms_selection:
+            self.mpms_plot()
+
     def _pick_sample(self, title, labels):
         """Menu deroulant des echantillons (fenetre a part, le graphique et la
         console restent visibles), Previous/Next pour les parcourir ; donne
@@ -4299,6 +4692,11 @@ class StereoUtilsApp:
         kind = getattr(event.artist, "_su_pick_kind", None)
         if kind == "hyst_xaxis":
             self._prompt_hyst_max_field()
+        elif kind == "mpms_yaxis":
+            # clic sur l'axe Y d'un graphique MPMS : zoom automatique <-> depart a 0
+            family = event.artist._su_pick_data
+            self.mpms_y_from_zero ^= {family}
+            self._mpms_replot()
         elif kind == "day_xaxis":
             self._prompt_day_xrange()
         elif kind == "day_point":
