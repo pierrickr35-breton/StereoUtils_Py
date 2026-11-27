@@ -361,6 +361,7 @@ def draw_project(
     phi: float = 0.0,
     iproj: int = 0,
     gid_prefix: str = "",
+    size_scale: float = 1.0,
 ) -> None:
     """Port de la boucle de trace de `plotproject` (plotstereo.f95:107-231)
     pour les 3 types d'entree ('m'/'g'/'d'), couleur RGB individuelle par
@@ -389,7 +390,7 @@ def draw_project(
             u, v, ifl = superc(la, phi, e.dec, e.inc, iproj)
             open_t, filled_t = _SYMBOL_TYPES.get(e.symb, _SYMBOL_TYPES["c"])
             ityp = open_t if ifl == 5 else filled_t
-            ctx.symbol(v * r, u * r, e.size, ityp, -1)
+            ctx.symbol(v * r, u * r, e.size * size_scale, ityp, -1)
             ctx.thickn(0.45)
             ei0, ed0 = circle(e.alph, e.inc, e.dec, 0.0)
             uu, vv, _ifl = superc(la, phi, ed0, ei0, iproj)
@@ -427,7 +428,7 @@ def draw_project(
             u, v, ifl = superc(la, phi, e.dec, e.inc, iproj)
             open_t, filled_t = _SYMBOL_TYPES.get(e.symb, _SYMBOL_TYPES["c"])
             ityp = open_t if ifl == 5 else filled_t
-            ctx.symbol(v * r, u * r, e.size, ityp, -1)
+            ctx.symbol(v * r, u * r, e.size * size_scale, ityp, -1)
     ctx.newpen(1)
 
 
@@ -632,7 +633,11 @@ def _parse_flat_lines(lines: Sequence[str]) -> List[ProjectEntry]:
 # lettre de case et le titre (demande utilisateur : reduire les espaces
 # vides de la figure).
 PANEL_DIM = 13.5        # `dim` de draw_stereo_net -> rayon dim/3 = 4.5 cm
-PANEL_SPACE = 0.6       # respiration entre deux cases (cm)
+PANEL_SPACE = 0.4       # respiration entre deux cases (cm)
+# dim of the single "Plot stereo project" (default diameter): symbol sizes in
+# a project file are meant for it, and are scaled by dim / SINGLE_DIM in the
+# smaller panels, so that symbols keep the same size relative to the circle
+SINGLE_DIM = 21.0
 PAGE_MARGIN = 0.15      # 2 columns -> 20.99 cm wide: fits an A4 page width
 
 
@@ -681,7 +686,8 @@ def draw_panels(ctx, panels: Sequence[Panel], la: float = -90.0, phi: float = 0.
         ctx.plottxt(-r - left + 0.05, r + 0.75, 0.42, f"({p.label})")
         if p.title:
             ctx.plottxt(-r - left + 1.05, r + 0.75, 0.36, p.title)
-        draw_project(ctx, p.entries, r, la, phi, iproj, gid_prefix=f"{p.label}_")
+        draw_project(ctx, p.entries, r, la, phi, iproj, gid_prefix=f"{p.label}_",
+                     size_scale=dim / SINGLE_DIM)
     ctx.plot(0.0, 0.0, -4)
 
 
