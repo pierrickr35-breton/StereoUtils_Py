@@ -374,7 +374,13 @@ class SVGWriter:
             '<?xml version="1.0" encoding="iso-8859-1"?>\n'
             '<svg version="1.2" baseProfile="tiny" xmlns="http://www.w3.org/2000/svg"\n'
             'xmlns:xlink="http://www.w3.org/1999/xlink"\n'
-            f' x="0px" y="0px" width="{self.width_cm:.1f}cm" height="{self.height_cm:.1f}cm" xml:space="preserve">\n'
+            f' x="0px" y="0px" width="{self.width_cm:.1f}cm" height="{self.height_cm:.1f}cm"'
+            # viewBox: the drawing is in points (SCRDPI per inch); without it,
+            # programs counting 96 px per inch (Inkscape, browsers) drew the
+            # figure at 3/4 of its page, leaving an empty band (Illustrator,
+            # at 72 per inch, was right)
+            f' viewBox="0 0 {self.width_cm / 2.54 * self.SCRDPI:.2f} {self.height_cm / 2.54 * self.SCRDPI:.2f}"'
+            ' xml:space="preserve">\n'
             '<g id="layerpmag0">\n'
         )
         body = "\n".join(self._lines)

@@ -627,23 +627,36 @@ def _parse_flat_lines(lines: Sequence[str]) -> List[ProjectEntry]:
     return entries
 
 
-# Mise en page (cm) : diametre de chaque stereo, marges autour (lettres
-# N/E/S/W, lettre de case, titre), comme une page GMT.
-PANEL_DIM = 10.5        # `dim` de draw_stereo_net -> rayon dim/3 = 3.5 cm
-PANEL_GAP = 1.6         # espace entre deux stereos (cm)
-PANEL_TOP = 1.4         # place au-dessus du cercle pour la lettre et le titre
-PAGE_MARGIN = 1.0
+# Mise en page (cm), au plus pres du trace : rayon des stereos et place
+# juste necessaire autour de chaque cercle pour les lettres N/E/S/W, la
+# lettre de case et le titre (demande utilisateur : reduire les espaces
+# vides de la figure).
+PANEL_DIM = 13.5        # `dim` de draw_stereo_net -> rayon dim/3 = 4.5 cm
+PANEL_SPACE = 0.6       # respiration entre deux cases (cm)
+PAGE_MARGIN = 0.15      # 2 columns -> 20.99 cm wide: fits an A4 page width
+
+
+def _panel_extents(dim: float) -> Tuple[float, float, float, float]:
+    """Place prise hors du cercle (cm) : (gauche "W", droite "E", haut
+    lettre/titre, bas "S"), d'apres les positions de draw_stereo_net."""
+    h = dim / 38.158692                    # hauteur des lettres N/E/S/W
+    left = 4 * dim / 84 + 0.05
+    right = dim / 190.9 + 0.8 * h
+    top = 0.75 + 0.45                      # ligne de la lettre "(a)" et du titre
+    bottom = dim / 1050.0 + dim / 27.63 + 0.05
+    return left, right, top, bottom
 
 
 def panels_page_size(panels: Sequence[Panel], dim: float = PANEL_DIM) -> Tuple[float, float, float, float]:
     """(largeur, hauteur, pas horizontal, pas vertical) de la page en cm."""
     r = dim / 3.0
+    left, right, top, bottom = _panel_extents(dim)
     nrows = max(p.row for p in panels) + 1
     ncols = max(p.col for p in panels) + 1
-    step_x = 2 * r + PANEL_GAP
-    step_y = 2 * r + PANEL_GAP + PANEL_TOP
-    return (2 * PAGE_MARGIN + ncols * step_x - PANEL_GAP,
-            2 * PAGE_MARGIN + nrows * step_y - PANEL_GAP, step_x, step_y)
+    step_x = 2 * r + left + right + PANEL_SPACE
+    step_y = 2 * r + top + bottom + PANEL_SPACE
+    return (2 * PAGE_MARGIN + ncols * step_x - PANEL_SPACE,
+            2 * PAGE_MARGIN + nrows * step_y - PANEL_SPACE, step_x, step_y)
 
 
 def draw_panels(ctx, panels: Sequence[Panel], la: float = -90.0, phi: float = 0.0,
@@ -653,20 +666,21 @@ def draw_panels(ctx, panels: Sequence[Panel], la: float = -90.0, phi: float = 0.
     reseau, lettre "(a)", titre, puis les entrees (calques prefixes par la
     lettre de case : "a_North Nangqian extrusives"...)."""
     r = dim / 3.0
+    left, _right, top, _bottom = _panel_extents(dim)
     width, height, step_x, step_y = panels_page_size(panels, dim)
     page_h = page_height if page_height is not None else height
     for p in panels:
-        cx = PAGE_MARGIN + r + p.col * step_x
-        cy = page_h - PAGE_MARGIN - PANEL_TOP - r - p.row * step_y
+        cx = PAGE_MARGIN + left + r + p.col * step_x
+        cy = page_h - PAGE_MARGIN - top - r - p.row * step_y
         ctx.plot(0.0, 0.0, -4)
         ctx.plot(cx, cy, -3)
         ctx.set_gid(f"{p.label}_net")
         draw_stereo_net(ctx, la, phi, iproj, dim)
         ctx.set_gid(f"{p.label}_title")
         ctx.newpen(1)
-        ctx.plottxt(-r - 0.4, r + 0.75, 0.42, f"({p.label})")
+        ctx.plottxt(-r - left + 0.05, r + 0.75, 0.42, f"({p.label})")
         if p.title:
-            ctx.plottxt(-r + 0.8, r + 0.75, 0.36, p.title)
+            ctx.plottxt(-r - left + 1.05, r + 0.75, 0.36, p.title)
         draw_project(ctx, p.entries, r, la, phi, iproj, gid_prefix=f"{p.label}_")
     ctx.plot(0.0, 0.0, -4)
 
